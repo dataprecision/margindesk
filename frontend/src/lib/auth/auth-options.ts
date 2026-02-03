@@ -95,23 +95,18 @@ export const authOptions: NextAuthOptions = {
             },
           });
 
-          // Check if user has app access
+          // Check if user has app access - only allow existing users
           const appUser = await prisma.user.findUnique({
             where: { email: user.email },
           });
 
           if (!appUser) {
-            // First-time Microsoft user: create with default role
-            await prisma.user.create({
-              data: {
-                email: user.email,
-                name: user.name || user.email,
-                role: "readonly",
-                auth_provider: "microsoft",
-              },
-            });
-          } else if (!appUser.auth_provider || appUser.auth_provider === "microsoft") {
-            // Update auth_provider for existing users
+            console.log("❌ Azure AD sign-in rejected: no User record for", user.email);
+            return false;
+          }
+
+          // Update auth_provider for existing users if needed
+          if (!appUser.auth_provider || appUser.auth_provider === "microsoft") {
             await prisma.user.update({
               where: { email: user.email },
               data: { auth_provider: "microsoft" },
