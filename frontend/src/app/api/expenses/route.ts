@@ -21,10 +21,10 @@ export const GET = withAuth(async (req, { user }) => {
   try {
     const { searchParams } = new URL(req.url);
 
-    // Pagination
+    // Pagination — limit=0 means return all records (no pagination)
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "50");
-    const skip = (page - 1) * limit;
+    const paginationOpts = limit > 0 ? { skip: (page - 1) * limit, take: limit } : {};
 
     // Sorting
     const sortBy = searchParams.get("sortBy") || "expense_date";
@@ -61,14 +61,13 @@ export const GET = withAuth(async (req, { user }) => {
       prisma.expense.findMany({
         where,
         orderBy: { [sortBy]: sortOrder },
-        skip,
-        take: limit,
+        ...paginationOpts,
       }),
       prisma.expense.count({ where }),
     ]);
 
     // Calculate pagination metadata
-    const totalPages = Math.ceil(total / limit);
+    const totalPages = limit > 0 ? Math.ceil(total / limit) : 1;
     const hasNextPage = page < totalPages;
     const hasPrevPage = page > 1;
 

@@ -43,7 +43,7 @@ export default function ExpensesPage() {
 
   const fetchExpenses = async () => {
     try {
-      const response = await fetch("/api/expenses?limit=10000"); // Fetch all records for client-side filtering
+      const response = await fetch("/api/expenses?limit=0"); // Fetch all records for client-side filtering
       if (!response.ok) {
         throw new Error("Failed to fetch expenses");
       }
