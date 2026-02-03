@@ -81,7 +81,7 @@ export default function BillsPage() {
 
   const fetchBills = async () => {
     try {
-      const response = await fetch("/api/bills?limit=1000"); // Fetch more records, add pagination UI later
+      const response = await fetch("/api/bills?limit=10000"); // Fetch all records for client-side filtering
       if (!response.ok) {
         throw new Error("Failed to fetch bills");
       }
