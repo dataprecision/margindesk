@@ -37,7 +37,12 @@ export async function GET(req: NextRequest) {
 
     // Exchange code for tokens
     const accountsUrl = getZohoAccountsUrl();
-    const redirect_uri = `${req.nextUrl.origin}/api/zoho-people/callback`;
+    const origin = process.env.NEXTAUTH_URL || req.nextUrl.origin;
+    const redirect_uri = `${origin}/api/zoho-people/callback`;
+
+    console.log("=== ZOHO PEOPLE TOKEN EXCHANGE REQUEST ===");
+    console.log("- redirect_uri:", redirect_uri);
+    console.log("- accountsUrl:", accountsUrl);
 
     const tokenResponse = await fetch(`${accountsUrl}/oauth/v2/token`, {
       method: "POST",
@@ -66,20 +71,33 @@ export async function GET(req: NextRequest) {
 
     const tokenData = await tokenResponse.json();
 
-    // Log token data for debugging (IMPORTANT: verify refresh_token is present)
-    console.log("=== ZOHO PEOPLE TOKEN EXCHANGE ===");
+    // Log token data for debugging
+    console.log("=== ZOHO PEOPLE TOKEN EXCHANGE RESPONSE ===");
+    console.log("Full Token Data Keys:", Object.keys(tokenData));
     console.log("Access Token:", tokenData.access_token ? "✓ Present" : "✗ MISSING");
     console.log("Refresh Token:", tokenData.refresh_token ? "✓ Present" : "✗ MISSING");
     console.log("Expires In:", tokenData.expires_in);
     console.log("API Domain:", tokenData.api_domain);
-    console.log("Token Type:", tokenData.token_type);
-    console.log("Full Token Data Keys:", Object.keys(tokenData));
 
-    // CRITICAL: Verify refresh_token is present
-    if (!tokenData.refresh_token) {
-      console.error("⚠️  CRITICAL: NO REFRESH TOKEN RECEIVED!");
-      console.error("This means the OAuth flow did not request offline access properly.");
-      console.error("Token Data:", JSON.stringify(tokenData, null, 2));
+    // Check for error in response body (Zoho returns HTTP 200 with error in JSON)
+    if (tokenData.error) {
+      console.error("Zoho token exchange returned error:", tokenData.error);
+      return NextResponse.redirect(
+        new URL(
+          `/settings?error=${encodeURIComponent(tokenData.error)}&message=${encodeURIComponent(`Zoho People token exchange failed: ${tokenData.error}`)}`,
+          baseUrl
+        )
+      );
+    }
+
+    if (!tokenData.access_token) {
+      console.error("No access_token in Zoho response:", JSON.stringify(tokenData));
+      return NextResponse.redirect(
+        new URL(
+          `/settings?error=no_access_token&message=${encodeURIComponent("No access token received from Zoho People")}`,
+          baseUrl
+        )
+      );
     }
 
     // Get API domain
@@ -139,7 +157,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(
       new URL(
         `/settings?success=true&message=${encodeURIComponent(`Connected to ${organizationName}`)}`,
-        req.url
+        baseUrl
       )
     );
   } catch (error: any) {
@@ -147,7 +165,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(
       new URL(
         `/settings?error=unknown&message=${encodeURIComponent(error.message)}`,
-        req.url
+        baseUrl
       )
     );
   }
