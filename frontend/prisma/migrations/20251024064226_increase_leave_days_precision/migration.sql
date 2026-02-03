@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Leave" ALTER COLUMN "days" TYPE DECIMAL(6,2);

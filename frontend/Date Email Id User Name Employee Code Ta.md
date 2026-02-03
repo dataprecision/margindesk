@@ -1,0 +1,2 @@
+Date	Email Id	User Name	Employee Code	Task/General/Issue	subtaskname	Project name	Task type	Enter By	Hours	Hours(For Calculation)	Notes	All Fields
+01/09/25	meghasood@dwao.in	Megha Sood	DEL-198	Connect with Client- Sept		Bajaj General Insurance	Billable	Megha Sood	0:40	0.67	call with palak- daily scrum call	
