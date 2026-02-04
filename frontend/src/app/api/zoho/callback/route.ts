@@ -10,8 +10,8 @@ const prisma = new PrismaClient();
  * Exchanges authorization code for access/refresh tokens
  */
 export async function GET(req: NextRequest) {
+  const baseUrl = process.env.NEXTAUTH_URL || new URL(req.url).origin;
   try {
-    const baseUrl = process.env.NEXTAUTH_URL || req.url;
     const searchParams = req.nextUrl.searchParams;
     const code = searchParams.get("code");
     const error = searchParams.get("error");
@@ -120,12 +120,12 @@ export async function GET(req: NextRequest) {
       api_domain: apiDomain,
       organization_id: organizationId,
       organization_name: organizationName,
-      expires_at: Date.now() + tokenData.expires_in * 1000,
+      expires_at: tokenData.expires_in ? Date.now() + tokenData.expires_in * 1000 : 0,
     };
 
     console.log("💾 Saving config to database:");
     console.log("- Has refresh_token in config:", !!config.refresh_token);
-    console.log("- Expires at:", new Date(config.expires_at).toISOString());
+    console.log("- Expires at:", config.expires_at ? new Date(config.expires_at).toISOString() : "unknown");
     console.log("- Organization:", organizationName, `(${organizationId})`);
 
     await prisma.integrationSettings.upsert({
