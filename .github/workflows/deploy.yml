@@ -1,0 +1,49 @@
+name: Deploy to EC2
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script_stop: true
+          command_timeout: 10m
+          script: |
+            set -e
+
+            APP_DIR="/home/ubuntu/margindesk"
+
+            # Clone or pull latest code
+            if [ ! -d "$APP_DIR" ]; then
+              git clone https://github.com/dataprecision/margindesk.git "$APP_DIR"
+            else
+              cd "$APP_DIR"
+              git fetch origin main
+              git reset --hard origin/main
+            fi
+
+            cd "$APP_DIR/frontend"
+
+            # Install dependencies
+            pnpm install --frozen-lockfile
+
+            # Generate Prisma client
+            pnpm exec prisma generate
+
+            # Run database migrations
+            pnpm exec prisma migrate deploy
+
+            # Build the app
+            pnpm run build
+
+            # Restart with PM2
+            pm2 restart margindesk --update-env || pm2 start npm --name "margindesk" -- start
+            pm2 save
