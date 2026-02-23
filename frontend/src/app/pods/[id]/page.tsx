@@ -665,7 +665,7 @@ function AddProjectModal({ podId, onClose, onSuccess }: AddProjectModalProps) {
       const res = await fetch("/api/projects");
       if (!res.ok) throw new Error("Failed to fetch projects");
       const data = await res.json();
-      setProjects(Array.isArray(data) ? data : []);
+      setProjects(Array.isArray(data.projects) ? data.projects : []);
     } catch (err) {
       console.error("Error fetching projects:", err);
     }
