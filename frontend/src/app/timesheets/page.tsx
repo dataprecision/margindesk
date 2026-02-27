@@ -62,6 +62,8 @@ export default function TimesheetsPage() {
   const [personId, setPersonId] = useState<string>("all");
   const [projectId, setProjectId] = useState<string>("all");
   const [aggregate, setAggregate] = useState<"monthly" | "daily" | "none">("monthly");
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
 
   // Expanded rows for task details
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -105,18 +107,25 @@ export default function TimesheetsPage() {
 
   // Fetch timesheet entries
   useEffect(() => {
+    if (period === "custom" && (!fromDate || !toDate)) return;
     fetchTimesheets();
-  }, [period, personId, projectId, aggregate]);
+  }, [period, personId, projectId, aggregate, fromDate, toDate]);
 
   const fetchTimesheets = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
-        period,
         person_id: personId,
         project_id: projectId,
         aggregate,
       });
+
+      if (period === "custom") {
+        params.set("from_date", fromDate);
+        params.set("to_date", toDate);
+      } else {
+        params.set("period", period);
+      }
 
       const response = await fetch(`/api/timesheets?${params.toString()}`);
       if (!response.ok) {
@@ -177,7 +186,7 @@ export default function TimesheetsPage() {
       <div className="bg-white shadow rounded-lg p-6 mb-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Filters</h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-end">
           {/* Period Filter */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -196,8 +205,37 @@ export default function TimesheetsPage() {
               <option value="last_fiscal_year">Last Fiscal Year</option>
               <option value="last_year">Last Year</option>
               <option value="all">All Time</option>
+              <option value="custom">Custom Range</option>
             </select>
           </div>
+
+          {/* Custom Date Range */}
+          {period === "custom" && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  From Date
+                </label>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  To Date
+                </label>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </>
+          )}
 
           {/* Person Filter */}
           <div>
