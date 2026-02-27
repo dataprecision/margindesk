@@ -216,10 +216,13 @@ function calculateTotals(entries: any[]) {
   return entries.reduce(
     (acc, entry) => {
       const hoursLogged = parseFloat(entry.hours_logged.toString());
-      const hoursBillable = parseFloat(entry.hours_billable.toString());
+      const isBillable = entry.is_billable === true;
       acc.hours_logged += hoursLogged;
-      acc.hours_billable += hoursBillable;
-      acc.hours_nonbillable += hoursLogged - hoursBillable;
+      if (isBillable) {
+        acc.hours_billable += hoursLogged;
+      } else {
+        acc.hours_nonbillable += hoursLogged;
+      }
       return acc;
     },
     { hours_logged: 0, hours_billable: 0, hours_nonbillable: 0 }
@@ -249,17 +252,20 @@ function aggregateByDaily(entries: any[]) {
 
     const group = grouped.get(key)!;
     const hoursLogged = parseFloat(entry.hours_logged.toString());
-    const hoursBillable = parseFloat(entry.hours_billable.toString());
+    const isBillable = entry.is_billable === true;
 
     group.hours_logged += hoursLogged;
-    group.hours_billable += hoursBillable;
-    group.hours_nonbillable += hoursLogged - hoursBillable;
+    if (isBillable) {
+      group.hours_billable += hoursLogged;
+    } else {
+      group.hours_nonbillable += hoursLogged;
+    }
     group.task_count++;
     group.tasks.push({
       task_name: entry.task_name,
       task_type: entry.task_type,
       hours_logged: hoursLogged,
-      hours_billable: hoursBillable,
+      is_billable: isBillable,
       notes: entry.notes,
     });
   });
@@ -292,11 +298,14 @@ function aggregateByMonthly(entries: any[]) {
 
     const group = grouped.get(key)!;
     const hoursLogged = parseFloat(entry.hours_logged.toString());
-    const hoursBillable = parseFloat(entry.hours_billable.toString());
+    const isBillable = entry.is_billable === true;
 
     group.hours_logged += hoursLogged;
-    group.hours_billable += hoursBillable;
-    group.hours_nonbillable += hoursLogged - hoursBillable;
+    if (isBillable) {
+      group.hours_billable += hoursLogged;
+    } else {
+      group.hours_nonbillable += hoursLogged;
+    }
     group.days_worked.add(entry.work_date.toISOString().split("T")[0]);
     group.task_count++;
   });
