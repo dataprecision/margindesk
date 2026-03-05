@@ -11,8 +11,10 @@ const prisma = new PrismaClient();
 export const DELETE = withAuth(async (req: NextRequest, { user, params }: { user: any; params: any }) => {
   try {
     const { id, projectId } = await params;
+    const { searchParams } = new URL(req.url);
+    const endDateParam = searchParams.get("end_date");
 
-    console.log("Unassigning project from pod:", { pod_id: id, project_id: projectId });
+    console.log("Unassigning project from pod:", { pod_id: id, project_id: projectId, end_date: endDateParam });
 
     // Check if user has permission (owner/finance only)
     if (user.role !== "owner" && user.role !== "finance") {
@@ -52,11 +54,22 @@ export const DELETE = withAuth(async (req: NextRequest, { user, params }: { user
       );
     }
 
+    // Determine end date: use provided date or current date
+    const endDate = endDateParam ? new Date(endDateParam) : new Date();
+
+    // Validate end date is not before start date
+    if (endDate < new Date(activeMapping.start_date)) {
+      return NextResponse.json(
+        { error: "End date cannot be before start date" },
+        { status: 400 }
+      );
+    }
+
     // Update mapping to set end_date
     const updatedMapping = await prisma.podProjectMapping.update({
       where: { id: activeMapping.id },
       data: {
-        end_date: new Date(),
+        end_date: endDate,
         updated_at: new Date(),
       },
     });

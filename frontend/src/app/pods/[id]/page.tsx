@@ -58,6 +58,8 @@ export default function PodDetailPage() {
   const [showAddProjectModal, setShowAddProjectModal] = useState(false);
   const [showRemoveMemberModal, setShowRemoveMemberModal] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<{ id: string; name: string } | null>(null);
+  const [showRemoveProjectModal, setShowRemoveProjectModal] = useState(false);
+  const [projectToRemove, setProjectToRemove] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     if (params.id) {
@@ -84,23 +86,9 @@ export default function PodDetailPage() {
     setShowRemoveMemberModal(true);
   };
 
-  const handleRemoveProject = async (projectId: string, projectName: string) => {
-    if (!confirm(`Remove ${projectName} from this pod?`)) return;
-
-    try {
-      const res = await fetch(`/api/pods/${params.id}/projects/${projectId}`, {
-        method: "DELETE",
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to remove project");
-      }
-
-      fetchPod();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to remove project");
-    }
+  const handleRemoveProject = (projectId: string, projectName: string) => {
+    setProjectToRemove({ id: projectId, name: projectName });
+    setShowRemoveProjectModal(true);
   };
 
   if (loading) {
@@ -470,6 +458,23 @@ export default function PodDetailPage() {
             onSuccess={() => {
               setShowRemoveMemberModal(false);
               setMemberToRemove(null);
+              fetchPod();
+            }}
+          />
+        )}
+
+        {showRemoveProjectModal && projectToRemove && (
+          <RemoveProjectModal
+            podId={pod.id}
+            projectId={projectToRemove.id}
+            projectName={projectToRemove.name}
+            onClose={() => {
+              setShowRemoveProjectModal(false);
+              setProjectToRemove(null);
+            }}
+            onSuccess={() => {
+              setShowRemoveProjectModal(false);
+              setProjectToRemove(null);
               fetchPod();
             }}
           />
@@ -857,6 +862,102 @@ function RemoveMemberModal({ podId, personId, personName, onClose, onSuccess }: 
               className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400"
             >
               {saving ? "Removing..." : "Remove Member"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+interface RemoveProjectModalProps {
+  podId: string;
+  projectId: string;
+  projectName: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function RemoveProjectModal({ podId, projectId, projectName, onClose, onSuccess }: RemoveProjectModalProps) {
+  const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+
+    try {
+      const res = await fetch(
+        `/api/pods/${podId}/projects/${projectId}?end_date=${endDate}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to remove project");
+      }
+
+      onSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove project");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">Remove Project</h2>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+            <p className="text-red-800 text-sm">{error}</p>
+          </div>
+        )}
+
+        <p className="text-gray-700 mb-4">
+          Remove <strong>{projectName}</strong> from this pod?
+        </p>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              End Date *
+            </label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              required
+              disabled={saving}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              The last day this project was assigned to the pod
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400"
+            >
+              {saving ? "Removing..." : "Remove Project"}
             </button>
           </div>
         </form>
