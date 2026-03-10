@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 
 interface PodMember {
   id: string;
@@ -49,6 +50,7 @@ interface PodDetail {
 export default function PodDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const { data: session } = useSession();
   const [pod, setPod] = useState<PodDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +62,8 @@ export default function PodDetailPage() {
   const [memberToRemove, setMemberToRemove] = useState<{ id: string; name: string } | null>(null);
   const [showRemoveProjectModal, setShowRemoveProjectModal] = useState(false);
   const [projectToRemove, setProjectToRemove] = useState<{ id: string; name: string } | null>(null);
+  const [showEditProjectDatesModal, setShowEditProjectDatesModal] = useState(false);
+  const [projectToEdit, setProjectToEdit] = useState<PodProject | null>(null);
 
   useEffect(() => {
     if (params.id) {
@@ -395,6 +399,9 @@ export default function PodDetailPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                         End Date
                       </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -414,6 +421,17 @@ export default function PodDetailPage() {
                             ? new Date(proj.end_date).toLocaleDateString()
                             : "-"}
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <button
+                            onClick={() => {
+                              setProjectToEdit(proj);
+                              setShowEditProjectDatesModal(true);
+                            }}
+                            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                          >
+                            Edit Dates
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -427,6 +445,7 @@ export default function PodDetailPage() {
         {showAddMemberModal && (
           <AddMemberModal
             podId={pod.id}
+            userRole={session?.user?.role || "readonly"}
             onClose={() => setShowAddMemberModal(false)}
             onSuccess={() => {
               setShowAddMemberModal(false);
@@ -479,6 +498,21 @@ export default function PodDetailPage() {
             }}
           />
         )}
+        {showEditProjectDatesModal && projectToEdit && (
+          <EditProjectDatesModal
+            podId={pod.id}
+            project={projectToEdit}
+            onClose={() => {
+              setShowEditProjectDatesModal(false);
+              setProjectToEdit(null);
+            }}
+            onSuccess={() => {
+              setShowEditProjectDatesModal(false);
+              setProjectToEdit(null);
+              fetchPod();
+            }}
+          />
+        )}
       </div>
     </div>
   );
@@ -486,20 +520,30 @@ export default function PodDetailPage() {
 
 interface AddMemberModalProps {
   podId: string;
+  userRole: string;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-function AddMemberModal({ podId, onClose, onSuccess }: AddMemberModalProps) {
+function AddMemberModal({ podId, userRole, onClose, onSuccess }: AddMemberModalProps) {
   const [personId, setPersonId] = useState("");
   const [startDate, setStartDate] = useState(
     new Date().toISOString().split("T")[0]
   );
   const [allocationPct, setAllocationPct] = useState("100");
   const [people, setPeople] = useState<any[]>([]);
+  const [personSearch, setPersonSearch] = useState("");
+  const [showPersonDropdown, setShowPersonDropdown] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+
+  const selectedPerson = people.find((p) => p.id === personId);
+  const filteredPeople = people.filter(
+    (p) =>
+      p.name.toLowerCase().includes(personSearch.toLowerCase()) ||
+      (p.employee_code && p.employee_code.toLowerCase().includes(personSearch.toLowerCase()))
+  );
 
   useEffect(() => {
     fetchPeople();
@@ -507,7 +551,18 @@ function AddMemberModal({ podId, onClose, onSuccess }: AddMemberModalProps) {
 
   const fetchPeople = async () => {
     try {
-      const res = await fetch("/api/people");
+      // PM users: only show people in their reporting chain
+      let url = "/api/people";
+      if (userRole === "pm") {
+        const meRes = await fetch("/api/auth/me");
+        if (meRes.ok) {
+          const meData = await meRes.json();
+          if (meData.person_id) {
+            url = `/api/people?reporting_to=${meData.person_id}`;
+          }
+        }
+      }
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch people");
       const data = await res.json();
       setPeople(data.people || []);
@@ -570,24 +625,60 @@ function AddMemberModal({ podId, onClose, onSuccess }: AddMemberModalProps) {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
+          <div className="relative">
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Person *
             </label>
-            <select
-              value={personId}
-              onChange={(e) => setPersonId(e.target.value)}
-              required
+            <input
+              type="text"
+              value={personId ? (selectedPerson ? `${selectedPerson.name} (${selectedPerson.employee_code})` : "") : personSearch}
+              onChange={(e) => {
+                setPersonSearch(e.target.value);
+                setPersonId("");
+                setShowPersonDropdown(true);
+              }}
+              onFocus={() => setShowPersonDropdown(true)}
+              placeholder="Search by name or employee code..."
               disabled={saving}
               className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            >
-              <option value="">Select Person</option>
-              {people.map((person) => (
-                <option key={person.id} value={person.id}>
-                  {person.name} ({person.employee_code})
-                </option>
-              ))}
-            </select>
+            />
+            {personId && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPersonId("");
+                  setPersonSearch("");
+                  setShowPersonDropdown(true);
+                }}
+                className="absolute right-2 top-8 text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            )}
+            {showPersonDropdown && !personId && (
+              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                {filteredPeople.length === 0 ? (
+                  <div className="px-3 py-2 text-sm text-gray-500">No results found</div>
+                ) : (
+                  filteredPeople.map((person) => (
+                    <button
+                      key={person.id}
+                      type="button"
+                      onClick={() => {
+                        setPersonId(person.id);
+                        setPersonSearch("");
+                        setShowPersonDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-0"
+                    >
+                      <span className="font-medium">{person.name}</span>
+                      <span className="text-gray-500 ml-2">({person.employee_code})</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+            <input type="hidden" required value={personId} />
           </div>
 
           <div>
@@ -958,6 +1049,121 @@ function RemoveProjectModal({ podId, projectId, projectName, onClose, onSuccess 
               className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400"
             >
               {saving ? "Removing..." : "Remove Project"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+interface EditProjectDatesModalProps {
+  podId: string;
+  project: PodProject;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function EditProjectDatesModal({ podId, project, onClose, onSuccess }: EditProjectDatesModalProps) {
+  const [startDate, setStartDate] = useState(project.start_date.split("T")[0]);
+  const [endDate, setEndDate] = useState(project.end_date ? project.end_date.split("T")[0] : "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+
+    try {
+      const res = await fetch(
+        `/api/pods/${podId}/projects/${project.project.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mapping_id: project.id,
+            start_date: startDate,
+            end_date: endDate || null,
+          }),
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to update project dates");
+      }
+
+      onSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update project dates");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">Edit Project Dates</h2>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+            <p className="text-red-800 text-sm">{error}</p>
+          </div>
+        )}
+
+        <p className="text-gray-700 mb-4">
+          <strong>{project.project.name}</strong> — {project.project.client.name}
+        </p>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Start Date *
+            </label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              required
+              disabled={saving}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              End Date
+            </label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              disabled={saving}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Leave empty to reactivate the project in this pod
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+            >
+              {saving ? "Saving..." : "Save Changes"}
             </button>
           </div>
         </form>

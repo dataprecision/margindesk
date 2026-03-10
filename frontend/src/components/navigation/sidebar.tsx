@@ -30,17 +30,24 @@ export default function Sidebar() {
     return `${base} text-gray-700 hover:bg-gray-100`;
   };
 
-  const navItems = [
-    { href: "/dashboard", label: "Dashboard", icon: "📊" },
-    { href: "/clients", label: "Clients", icon: "👥" },
-    { href: "/projects", label: "Projects", icon: "📁" },
-    { href: "/employees", label: "People", icon: "👤" },
-    { href: "/pods", label: "Pods", icon: "🎯" },
-    { href: "/project-costs", label: "Project Costs", icon: "💰" },
-    { href: "/expenses", label: "Expenses", icon: "💳" },
-    { href: "/bills", label: "Bills", icon: "📄" },
-    { href: "/holidays", label: "Holidays", icon: "🎄" },
+  const userRole = session.user?.role;
+  const isPM = userRole === "pm";
+
+  const allNavItems = [
+    { href: "/dashboard", label: "Dashboard", icon: "📊", pmVisible: true },
+    { href: "/clients", label: "Clients", icon: "👥", pmVisible: false },
+    { href: "/projects", label: "Projects", icon: "📁", pmVisible: false },
+    { href: "/employees", label: "People", icon: "👤", pmVisible: false },
+    { href: "/pods", label: "Pods", icon: "🎯", pmVisible: true },
+    { href: "/project-costs", label: "Project Costs", icon: "💰", pmVisible: true },
+    { href: "/expenses", label: "Expenses", icon: "💳", pmVisible: false },
+    { href: "/bills", label: "Bills", icon: "📄", pmVisible: false },
+    { href: "/holidays", label: "Holidays", icon: "🎄", pmVisible: true },
   ];
+
+  const navItems = isPM
+    ? allNavItems.filter((item) => item.pmVisible)
+    : allNavItems;
 
   const settingsItems = [
     { href: "/settings/products", label: "Products", icon: "📦" },
@@ -48,12 +55,16 @@ export default function Sidebar() {
     { href: "/settings/import-salary", label: "Import Salary", icon: "💵" },
   ];
 
-  const reportItems = [
-    { href: "/salaries", label: "Salaries", icon: "💵" },
-    { href: "/reports/profit-loss", label: "P&L Report", icon: "💼" },
-    { href: "/reports/pod-financials", label: "Pod Financials", icon: "📈" },
-    { href: "/reports/reselling-profitability", label: "Reselling Report", icon: "💹" },
+  const allReportItems = [
+    { href: "/salaries", label: "Salaries", icon: "💵", pmVisible: true },
+    { href: "/reports/profit-loss", label: "P&L Report", icon: "💼", pmVisible: true },
+    { href: "/reports/pod-financials", label: "Pod Financials", icon: "📈", pmVisible: true },
+    { href: "/reports/reselling-profitability", label: "Reselling Report", icon: "💹", pmVisible: false },
   ];
+
+  const reportItems = isPM
+    ? allReportItems.filter((item) => item.pmVisible)
+    : allReportItems;
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-white border-r border-gray-200 flex flex-col">

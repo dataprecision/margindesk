@@ -233,7 +233,7 @@ export default function ImportPage() {
                 {uploading ? "Importing..." : "Import Timesheet Data"}
               </button>
               <p className="text-xs text-gray-500">
-                CSV or Excel format. Expected columns: Employee, Project, Date, Hours
+                CSV format. Required: Date, Email Id, User Name, Project name, Task Name, Task type, Hours(For Calculation), Notes. Optional: Employee Code
               </p>
             </div>
           </div>

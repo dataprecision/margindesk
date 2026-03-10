@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { withAuth } from "@/lib/auth/protect-route";
+import { getPodIdsForUser } from "@/lib/auth/pod-scope";
 
 const prisma = new PrismaClient();
 
@@ -22,6 +23,12 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
     }
     if (leader_id) {
       where.leader_id = leader_id;
+    }
+
+    // PM role: scope to their pods only
+    const allowedPodIds = await getPodIdsForUser(user.email, user.role);
+    if (allowedPodIds !== null) {
+      where.id = { in: allowedPodIds };
     }
 
     const pods = await prisma.financialPod.findMany({

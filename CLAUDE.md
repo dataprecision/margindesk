@@ -18,7 +18,7 @@ pnpm run dev              # Start dev server (default port 3000)
 pnpm run build            # Production build
 pnpm run start            # Start production server
 
-# Quality checks
+# Quality checks (must be run manually — both are skipped during `pnpm run build`)
 pnpm run lint             # ESLint (next/core-web-vitals)
 pnpm run type-check       # TypeScript strict check (tsc --noEmit)
 
@@ -81,7 +81,9 @@ frontend/
 
 **Authentication & RBAC**: NextAuth with JWT strategy (30-day sessions). Azure AD users are auto-created as `readonly` role on first login. Four roles: `owner`, `finance`, `pm`, `readonly`. RBAC helpers in `src/lib/auth/session.ts` — use `getCurrentUser()` in API routes and check with `hasRole()`, `isAdmin()`, `canEditAllocations()`, etc.
 
-**API Routes**: All under `src/app/api/`. Standard CRUD pattern — each route file handles GET/POST or GET/PUT/DELETE via exported async functions. Protected by calling `getCurrentUser()` which throws if unauthenticated. `PrismaClient` is instantiated per-file (no shared singleton).
+**API Routes**: All under `src/app/api/`. Standard CRUD pattern — each route file handles GET/POST or GET/PUT/DELETE via exported async functions. Protected using wrapper functions from `src/lib/auth/protect-route.ts`: `withAuth()` for any authenticated user, `withRole()` for specific roles, `withAdminRole()` for owner/finance, `withPMRole()` for owner/finance/pm. `PrismaClient` is instantiated per-file (no shared singleton).
+
+**No Test Suite**: This project has no automated tests. There is no test runner configured.
 
 **Data Fetching**: Client-side with `useEffect` + `fetch()`. Pages marked `"use client"` for interactivity. No server components doing data fetching — all data flows through API routes.
 
@@ -122,6 +124,10 @@ Required in `frontend/.env`. Template at `frontend/.env.example`. Key groups:
 - `AZURE_AD_CLIENT_ID`, `AZURE_AD_CLIENT_SECRET`, `AZURE_AD_TENANT_ID` — Azure AD
 - `ZOHO_*` — Zoho Books OAuth credentials and org ID
 - Feature flags: `ENABLE_MICROSOFT_SYNC`, `ENABLE_ZOHO_SYNC`, `ENABLE_ON_DEMAND_SYNC`
+
+## Build & Deployment
+
+Next.js is configured with `output: "standalone"` for containerized deployment. The build ignores both ESLint and TypeScript errors (`ignoreDuringBuilds: true`, `ignoreBuildErrors: true` in `next.config.ts`), so always run `pnpm run lint` and `pnpm run type-check` separately to catch issues.
 
 ## Reference Documentation
 

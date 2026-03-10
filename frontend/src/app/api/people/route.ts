@@ -14,9 +14,31 @@ export const GET = withAuth(async (req, { user }) => {
     const role = searchParams.get("role");
     const billable = searchParams.get("billable");
 
+    const managerId = searchParams.get("manager_id");
+    const reportingTo = searchParams.get("reporting_to");
+
     const where: any = {};
     if (role) where.role = role;
     if (billable !== null) where.billable = billable === "true";
+    if (managerId) where.manager_id = managerId;
+
+    // reporting_to: find all people in reporting chain (direct + indirect reports)
+    if (reportingTo) {
+      const allReportIds: string[] = [];
+      let currentLevel = [reportingTo];
+
+      while (currentLevel.length > 0) {
+        const reports = await prisma.person.findMany({
+          where: { manager_id: { in: currentLevel }, end_date: null },
+          select: { id: true },
+        });
+        const ids = reports.map((r) => r.id);
+        allReportIds.push(...ids);
+        currentLevel = ids;
+      }
+
+      where.id = { in: allReportIds };
+    }
 
     // Get current month for utilization lookup
     const currentMonth = new Date();

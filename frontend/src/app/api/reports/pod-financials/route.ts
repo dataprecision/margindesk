@@ -1,22 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { withAuth } from "@/lib/auth/protect-route";
+import { getPodIdsForUser } from "@/lib/auth/pod-scope";
 
 const prisma = new PrismaClient({
   log: ['query', 'info', 'warn', 'error'],
 });
 
 /**
- * Calculate number of business days (excluding weekends) between two dates
+ * Calculate number of working days (excluding weekends and holidays) between two dates
  */
-function calculateBusinessDays(startDate: Date, endDate: Date): number {
+function calculateBusinessDays(startDate: Date, endDate: Date, holidayDates: Set<string> = new Set()): number {
   let count = 0;
   const current = new Date(startDate);
 
   while (current <= endDate) {
     const dayOfWeek = current.getDay();
-    // 0 = Sunday, 6 = Saturday
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+    const dateStr = current.toISOString().split('T')[0];
+    // Skip weekends and holidays
+    if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidayDates.has(dateStr)) {
       count++;
     }
     current.setDate(current.getDate() + 1);
@@ -41,6 +43,15 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
       return NextResponse.json(
         { error: "pod_id, start_month, and end_month are required" },
         { status: 400 }
+      );
+    }
+
+    // PM role: verify access to this pod
+    const allowedPodIds = await getPodIdsForUser(user.email, user.role);
+    if (allowedPodIds !== null && !allowedPodIds.includes(podId)) {
+      return NextResponse.json(
+        { error: "You don't have access to this pod" },
+        { status: 403 }
       );
     }
 
@@ -120,6 +131,17 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
       return NextResponse.json({ error: "Pod not found" }, { status: 404 });
     }
 
+    // Fetch holidays for the period
+    const holidays = await prisma.holiday.findMany({
+      where: {
+        date: { gte: startDate, lte: endDate },
+      },
+      select: { date: true },
+    });
+    const holidayDates = new Set(
+      holidays.map((h) => h.date.toISOString().split("T")[0])
+    );
+
     // Calculate months in range
     const months: string[] = [];
     const current = new Date(startDate);
@@ -133,6 +155,11 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
     const revenueByProject: Record<string, { name: string; client: string; total: number }> = {};
 
     pod.projects.forEach((mapping) => {
+      // Skip projects where start and end date are the same day (zero-duration mapping)
+      if (mapping.end_date && mapping.start_date.toISOString().split('T')[0] === mapping.end_date.toISOString().split('T')[0]) {
+        return;
+      }
+
       const project = mapping.project;
       let projectTotal = 0;
 
@@ -259,7 +286,7 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
       });
 
       // Calculate business days for the effective period only
-      const businessDays = calculateBusinessDays(effectiveStart, effectiveEnd);
+      const businessDays = calculateBusinessDays(effectiveStart, effectiveEnd, holidayDates);
       totalWorking = businessDays * 8; // 8 hours per business day
 
       const unutilized = totalWorking - totalWorked;

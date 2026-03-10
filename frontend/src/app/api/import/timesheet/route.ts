@@ -57,6 +57,10 @@ export const POST = withAuth(async (req, { user }: { user: any }) => {
     const csvContent = await file.text();
     console.log("CSV content length:", csvContent.length);
 
+    // Log first line to debug delimiter/header issues
+    const firstLine = csvContent.split('\n')[0];
+    console.log("CSV first line:", firstLine.substring(0, 200));
+
     // Parse CSV
     const records: TimesheetRow[] = parse(csvContent, {
       columns: true,
@@ -66,6 +70,12 @@ export const POST = withAuth(async (req, { user }: { user: any }) => {
       skip_records_with_error: true, // Skip malformed records
       relax_quotes: true, // Handle quotes more flexibly
     });
+
+    console.log(`Parsed ${records.length} records`);
+    if (records.length > 0) {
+      console.log("Column headers:", Object.keys(records[0]));
+      console.log("First record:", JSON.stringify(records[0]));
+    }
 
     if (records.length === 0) {
       return NextResponse.json(
@@ -119,17 +129,31 @@ export const POST = withAuth(async (req, { user }: { user: any }) => {
           continue;
         }
 
-        // Parse date (format: DD/MM/YY)
-        const dateParts = record.Date.split('/');
+        // Parse date - supports multiple formats:
+        //   DD/MM/YY, DD/MM/YYYY, DD-MM-YY, DD-MM-YYYY, YYYY-MM-DD
+        const dateParts = record.Date.trim().split(/[\/\-]/);
         if (dateParts.length !== 3) {
           stats.skippedRows++;
-          stats.errors.push(`Row ${index + 2}: Invalid date format (expected DD/MM/YY)`);
+          stats.errors.push(`Row ${index + 2}: Invalid date format: ${record.Date}`);
           continue;
         }
 
-        const day = parseInt(dateParts[0], 10);
-        const month = parseInt(dateParts[1], 10) - 1; // JS months are 0-indexed
-        let year = parseInt(dateParts[2], 10);
+        let day: number, month: number, year: number;
+        const p0 = parseInt(dateParts[0], 10);
+        const p1 = parseInt(dateParts[1], 10);
+        const p2 = parseInt(dateParts[2], 10);
+
+        if (p0 > 999) {
+          // YYYY-MM-DD (ISO format)
+          year = p0;
+          month = p1 - 1;
+          day = p2;
+        } else {
+          // DD/MM/YY or DD-MM-YYYY
+          day = p0;
+          month = p1 - 1; // JS months are 0-indexed
+          year = p2;
+        }
 
         // Convert 2-digit year to 4-digit (assume 20XX for YY < 50, 19XX otherwise)
         if (year < 100) {
@@ -201,9 +225,9 @@ export const POST = withAuth(async (req, { user }: { user: any }) => {
         const taskTypeLower = record["Task type"]?.toLowerCase().trim() || "";
         const isBillable = taskTypeLower === "billable";
 
-        // Create hash for duplicate detection (Date+Email+Project+Task+Hours+Notes)
-        // Include Notes to handle multiple entries with same task but different notes
-        const hashContent = `${record.Date}|${record["Email Id"]}|${record["Project name"]}|${record["Task/General/subtask name"]}|${record.Hours}|${record.Notes || ''}`;
+        // Create unique hash per CSV row - include row index since multiple rows
+        // can have identical date/email/project/hours (e.g. separate task entries)
+        const hashContent = `${index}|${record.Date}|${record["Email Id"]}|${record["Project name"]}|${record["Task Name"]}|${calculationHours}|${record.Notes || ''}`;
         const sourceRowHash = createHash("md5").update(hashContent).digest("hex");
 
         // Collect entry for batch insert
@@ -211,7 +235,7 @@ export const POST = withAuth(async (req, { user }: { user: any }) => {
           person_id: person.id,
           project_id: project.id,
           work_date: date,
-          task_name: record["Task/General/subtask name"] || null,
+          task_name: record["Task Name"] || null,
           task_type: record["Task type"] || null,
           hours_logged: calculationHours,
           is_billable: isBillable,

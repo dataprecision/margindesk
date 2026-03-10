@@ -122,21 +122,43 @@ export const authOptions: NextAuthOptions = {
       }
     },
 
-    async session({ session, token }) {
-      if (session.user?.email) {
+    async jwt({ token, user }) {
+      // On sign-in or if role is missing from token, fetch from DB
+      const email = user?.email || token?.email;
+      if (email && !token.role) {
         try {
-          // Attach user role to session
-          const user = await prisma.user.findUnique({
-            where: { email: session.user.email },
+          const dbUser = await prisma.user.findUnique({
+            where: { email: email as string },
+            select: { id: true, role: true },
           });
-
-          if (user) {
-            session.user.id = user.id;
-            session.user.role = user.role;
+          if (dbUser) {
+            token.userId = dbUser.id;
+            token.role = dbUser.role;
           }
         } catch (error) {
-          console.error("Error in session callback:", error);
+          console.error("Error in jwt callback:", error);
         }
+      } else if (user?.email) {
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { email: user.email },
+            select: { id: true, role: true },
+          });
+          if (dbUser) {
+            token.userId = dbUser.id;
+            token.role = dbUser.role;
+          }
+        } catch (error) {
+          console.error("Error in jwt callback:", error);
+        }
+      }
+      return token;
+    },
+
+    async session({ session, token }) {
+      if (token) {
+        session.user.id = token.userId as string;
+        session.user.role = token.role as any;
       }
 
       return session;

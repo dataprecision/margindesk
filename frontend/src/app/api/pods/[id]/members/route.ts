@@ -65,10 +65,10 @@ export const POST = withAuth(async (req: NextRequest, { user, params }: { user: 
 
     console.log("Adding member to pod:", { pod_id: id, body });
 
-    // Check if user has permission (owner/finance only)
-    if (user.role !== "owner" && user.role !== "finance") {
+    // Check if user has permission (owner/finance/pm)
+    if (user.role !== "owner" && user.role !== "finance" && user.role !== "pm") {
       return NextResponse.json(
-        { error: "Only owners and finance can manage pod members" },
+        { error: "Insufficient permissions to manage pod members" },
         { status: 403 }
       );
     }
@@ -79,6 +79,47 @@ export const POST = withAuth(async (req: NextRequest, { user, params }: { user: 
         { error: "person_id and start_date are required" },
         { status: 400 }
       );
+    }
+
+    // PM role: can only add people in their reporting chain
+    if (user.role === "pm") {
+      const pmPerson = await prisma.person.findUnique({
+        where: { email: user.email },
+        select: { id: true },
+      });
+
+      if (!pmPerson) {
+        return NextResponse.json(
+          { error: "Your person record was not found" },
+          { status: 403 }
+        );
+      }
+
+      // Walk up the target person's manager chain to see if PM is an ancestor
+      let currentId: string | null = body.person_id;
+      let isInChain = false;
+      const visited = new Set<string>();
+
+      while (currentId && !visited.has(currentId)) {
+        visited.add(currentId);
+        const p = await prisma.person.findUnique({
+          where: { id: currentId },
+          select: { manager_id: true },
+        });
+        if (!p) break;
+        if (p.manager_id === pmPerson.id) {
+          isInChain = true;
+          break;
+        }
+        currentId = p.manager_id;
+      }
+
+      if (!isInChain) {
+        return NextResponse.json(
+          { error: "You can only add people in your reporting chain" },
+          { status: 403 }
+        );
+      }
     }
 
     // Validate allocation_pct (0-100)

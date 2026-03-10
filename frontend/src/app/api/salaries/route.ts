@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { withAuth } from "@/lib/auth/protect-route";
+import { getPersonIdsForUser } from "@/lib/auth/pod-scope";
 
 const prisma = new PrismaClient();
 
@@ -61,6 +62,12 @@ export const GET = withAuth(async (req, { user }) => {
     }
     if (department) {
       personWhere.department = department;
+    }
+
+    // PM role: scope to people in their pods only
+    const allowedPersonIds = await getPersonIdsForUser(user.email, user.role);
+    if (allowedPersonIds !== null) {
+      personWhere.id = { in: allowedPersonIds };
     }
 
     if (Object.keys(personWhere).length > 0) {

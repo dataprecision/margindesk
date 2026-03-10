@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { withAuth } from "@/lib/auth/protect-route";
+import { getProjectIdsForUser } from "@/lib/auth/pod-scope";
 
 const prisma = new PrismaClient();
 
@@ -25,15 +26,23 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
     const startDate = new Date(startMonth);
     const endDate = new Date(endMonth);
 
+    // PM role: scope to projects in their pods only
+    const allowedProjectIds = await getProjectIdsForUser(user.email, user.role);
+
     // Get all active projects with their configs
     // Only include hourly projects (blended or resource-based)
-    const projects = await prisma.project.findMany({
-      where: {
-        status: { in: ["active", "on_hold"] },
-        config: {
-          project_type: { in: ["hourly_blended", "hourly_resource_based"] },
-        },
+    const projectWhere: any = {
+      status: { in: ["active", "on_hold"] },
+      config: {
+        project_type: { in: ["hourly_blended", "hourly_resource_based"] },
       },
+    };
+    if (allowedProjectIds !== null) {
+      projectWhere.id = { in: allowedProjectIds };
+    }
+
+    const projects = await prisma.project.findMany({
+      where: projectWhere,
       include: {
         client: {
           select: { id: true, name: true },

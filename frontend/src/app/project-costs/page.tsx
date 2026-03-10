@@ -60,6 +60,11 @@ export default function ProjectCostsPage() {
   const [gridData, setGridData] = useState<Map<string, CellData>>(new Map());
   const [editedCells, setEditedCells] = useState<Set<string>>(new Set());
 
+  // Import
+  const [importing, setImporting] = useState(false);
+  const [importMonth, setImportMonth] = useState("");
+  const [showImportModal, setShowImportModal] = useState(false);
+
   // Clipboard support
   const [selectedCell, setSelectedCell] = useState<string | null>(null);
   const [copiedData, setCopiedData] = useState<string[][] | null>(null);
@@ -333,6 +338,46 @@ export default function ProjectCostsPage() {
     }
   };
 
+  const handleExportTemplate = (month: string) => {
+    const monthParam = month.substring(0, 7); // YYYY-MM
+    window.open(`/api/project-costs/export?month=${monthParam}`, "_blank");
+  };
+
+  const handleImportCsv = async (file: File, month: string) => {
+    try {
+      setImporting(true);
+      setError(null);
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("month", month);
+
+      const res = await fetch("/api/project-costs/import", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to import");
+      }
+
+      let msg = `Imported ${data.updated} project costs for ${month}`;
+      if (data.skipped > 0) msg += `, ${data.skipped} skipped`;
+      if (data.errors?.length > 0) msg += `. Errors: ${data.errors.join("; ")}`;
+
+      setSuccessMessage(msg);
+      setTimeout(() => setSuccessMessage(null), 5000);
+      setShowImportModal(false);
+      fetchProjectCosts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to import");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const formatMonthHeader = (monthStr: string) => {
     const date = new Date(monthStr);
     return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
@@ -390,10 +435,10 @@ export default function ProjectCostsPage() {
             </div>
             <div className="flex gap-3">
               <button
-                onClick={() => router.push("/reselling-invoices/new")}
-                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                onClick={() => setShowImportModal(true)}
+                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
               >
-                📦 Reselling Invoice Entry
+                Import CSV
               </button>
               <button
                 onClick={() => fetchProjectCosts()}
@@ -580,6 +625,110 @@ export default function ProjectCostsPage() {
             </p>
           </div>
         )}
+
+        {/* Import Modal */}
+        {showImportModal && (
+          <ImportCsvModal
+            onClose={() => setShowImportModal(false)}
+            onImport={handleImportCsv}
+            onExport={handleExportTemplate}
+            importing={importing}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface ImportCsvModalProps {
+  onClose: () => void;
+  onImport: (file: File, month: string) => void;
+  onExport: (month: string) => void;
+  importing: boolean;
+}
+
+function ImportCsvModal({ onClose, onImport, onExport, importing }: ImportCsvModalProps) {
+  const [month, setMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [file, setFile] = useState<File | null>(null);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (file && month) {
+      onImport(file, month);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">Import Project Costs</h2>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Month *
+            </label>
+            <input
+              type="month"
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+              required
+              disabled={importing}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
+          </div>
+
+          <div>
+            <button
+              type="button"
+              onClick={() => onExport(month + "-01")}
+              className="text-blue-600 hover:text-blue-800 text-sm font-medium underline"
+            >
+              Download template for {new Date(month + "-01").toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+            </button>
+            <p className="text-xs text-gray-500 mt-1">
+              Download the CSV template, fill in the Revenue column, then upload it below.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              CSV File *
+            </label>
+            <input
+              type="file"
+              accept=".csv"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              required
+              disabled={importing}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Required columns: Project ID, Revenue. Client and Project Name are for reference only.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={importing}
+              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={importing || !file}
+              className="px-6 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400"
+            >
+              {importing ? "Importing..." : "Import"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

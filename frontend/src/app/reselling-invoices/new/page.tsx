@@ -43,6 +43,8 @@ export default function ResellingMonthlyDataPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Month selection - default to current month
   const [selectedMonth, setSelectedMonth] = useState("");
@@ -210,6 +212,48 @@ export default function ResellingMonthlyDataPage() {
     }
   };
 
+  const handleExportTemplate = (month: string) => {
+    const monthParam = month.substring(0, 7);
+    window.open(`/api/reselling-invoices/export?month=${monthParam}`, "_blank");
+  };
+
+  const handleImportCsv = async (file: File, month: string) => {
+    try {
+      setImporting(true);
+      setError(null);
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("month", month);
+
+      const res = await fetch("/api/reselling-invoices/import", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to import");
+      }
+
+      let msg = `Imported ${data.created + data.updated} reselling invoices for ${month}`;
+      if (data.created > 0) msg += ` (${data.created} new)`;
+      if (data.updated > 0) msg += ` (${data.updated} updated)`;
+      if (data.skipped > 0) msg += `, ${data.skipped} skipped`;
+      if (data.errors?.length > 0) msg += `. Errors: ${data.errors.join("; ")}`;
+
+      setSuccessMessage(msg);
+      setTimeout(() => setSuccessMessage(null), 5000);
+      setShowImportModal(false);
+      fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to import");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const formatMonthDisplay = (monthStr: string) => {
     const [year, month] = monthStr.split("-");
     const date = new Date(parseInt(year), parseInt(month) - 1);
@@ -244,6 +288,12 @@ export default function ResellingMonthlyDataPage() {
               </p>
             </div>
             <div className="flex gap-3">
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+              >
+                Import CSV
+              </button>
               <Link
                 href="/reselling-invoices"
                 className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
@@ -435,6 +485,114 @@ export default function ResellingMonthlyDataPage() {
             </p>
           </div>
         )}
+
+        {/* Import Modal */}
+        {showImportModal && (
+          <ResellingImportModal
+            defaultMonth={selectedMonth}
+            onClose={() => setShowImportModal(false)}
+            onImport={handleImportCsv}
+            onExport={handleExportTemplate}
+            importing={importing}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface ResellingImportModalProps {
+  defaultMonth: string;
+  onClose: () => void;
+  onImport: (file: File, month: string) => void;
+  onExport: (month: string) => void;
+  importing: boolean;
+}
+
+function ResellingImportModal({ defaultMonth, onClose, onImport, onExport, importing }: ResellingImportModalProps) {
+  const [month, setMonth] = useState(defaultMonth);
+  const [file, setFile] = useState<File | null>(null);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (file && month) {
+      onImport(file, month);
+    }
+  };
+
+  const monthLabel = new Date(month + "-01").toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">Import Reselling Invoices</h2>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Month *
+            </label>
+            <input
+              type="month"
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+              required
+              disabled={importing}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
+          </div>
+
+          <div>
+            <button
+              type="button"
+              onClick={() => onExport(month + "-01")}
+              className="text-blue-600 hover:text-blue-800 text-sm font-medium underline"
+            >
+              Download template for {monthLabel}
+            </button>
+            <p className="text-xs text-gray-500 mt-1">
+              Download the CSV template with pre-filled project details, fill in Revenue/OEM Cost/Other Expenses columns, then upload below.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              CSV File *
+            </label>
+            <input
+              type="file"
+              accept=".csv"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              required
+              disabled={importing}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Required columns: Project ID, Revenue. Optional: OEM Cost, Other Expenses. Product ID falls back to project config if not provided.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={importing}
+              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={importing || !file}
+              className="px-6 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400"
+            >
+              {importing ? "Importing..." : "Import"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
