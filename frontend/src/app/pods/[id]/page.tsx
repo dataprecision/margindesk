@@ -64,6 +64,8 @@ export default function PodDetailPage() {
   const [projectToRemove, setProjectToRemove] = useState<{ id: string; name: string } | null>(null);
   const [showEditProjectDatesModal, setShowEditProjectDatesModal] = useState(false);
   const [projectToEdit, setProjectToEdit] = useState<PodProject | null>(null);
+  const [showEditMemberDatesModal, setShowEditMemberDatesModal] = useState(false);
+  const [memberToEdit, setMemberToEdit] = useState<PodMember | null>(null);
 
   useEffect(() => {
     if (params.id) {
@@ -269,6 +271,9 @@ export default function PodDetailPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                         Allocation
                       </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -287,6 +292,17 @@ export default function PodDetailPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           {member.allocation_pct}%
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <button
+                            onClick={() => {
+                              setMemberToEdit(member);
+                              setShowEditMemberDatesModal(true);
+                            }}
+                            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                          >
+                            Edit Dates
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -494,6 +510,21 @@ export default function PodDetailPage() {
             onSuccess={() => {
               setShowRemoveProjectModal(false);
               setProjectToRemove(null);
+              fetchPod();
+            }}
+          />
+        )}
+        {showEditMemberDatesModal && memberToEdit && (
+          <EditMemberDatesModal
+            podId={pod.id}
+            member={memberToEdit}
+            onClose={() => {
+              setShowEditMemberDatesModal(false);
+              setMemberToEdit(null);
+            }}
+            onSuccess={() => {
+              setShowEditMemberDatesModal(false);
+              setMemberToEdit(null);
               fetchPod();
             }}
           />
@@ -1049,6 +1080,121 @@ function RemoveProjectModal({ podId, projectId, projectName, onClose, onSuccess 
               className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400"
             >
               {saving ? "Removing..." : "Remove Project"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+interface EditMemberDatesModalProps {
+  podId: string;
+  member: PodMember;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function EditMemberDatesModal({ podId, member, onClose, onSuccess }: EditMemberDatesModalProps) {
+  const [startDate, setStartDate] = useState(member.start_date.split("T")[0]);
+  const [endDate, setEndDate] = useState(member.end_date ? member.end_date.split("T")[0] : "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+
+    try {
+      const res = await fetch(
+        `/api/pods/${podId}/members/${member.person.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            membership_id: member.id,
+            start_date: startDate,
+            end_date: endDate || null,
+          }),
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to update member dates");
+      }
+
+      onSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update member dates");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">Edit Member Dates</h2>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+            <p className="text-red-800 text-sm">{error}</p>
+          </div>
+        )}
+
+        <p className="text-gray-700 mb-4">
+          <strong>{member.person.name}</strong> ({member.person.employee_code})
+        </p>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Start Date *
+            </label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              required
+              disabled={saving}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              End Date
+            </label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              disabled={saving}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Leave empty to reactivate the member in this pod
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+            >
+              {saving ? "Saving..." : "Save Changes"}
             </button>
           </div>
         </form>

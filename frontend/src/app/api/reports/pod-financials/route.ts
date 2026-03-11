@@ -184,8 +184,16 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
     const utilizationByMember: Record<string, any> = {};
     const utilizationByMonth: Record<string, any> = {};
 
+    // Filter out members with same-day start/end (zero-duration membership)
+    const activeMembers = pod.members.filter((m) => {
+      if (m.end_date && m.start_date.toISOString().split('T')[0] === m.end_date.toISOString().split('T')[0]) {
+        return false;
+      }
+      return true;
+    });
+
     // Get all pod members' allocations
-    const memberIds = pod.members.map((m) => m.person_id);
+    const memberIds = activeMembers.map((m) => m.person_id);
     const allAllocations = await prisma.allocation.findMany({
       where: {
         person_id: { in: memberIds },
@@ -230,7 +238,7 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
     });
 
     // Process utilization by member
-    pod.members.forEach((membership) => {
+    activeMembers.forEach((membership) => {
       const person = membership.person;
       const memberAllocations = allAllocations.filter((a) => a.person_id === person.id);
       const memberTimesheets = timesheetEntries.filter((t) => t.person_id === person.id);
@@ -339,7 +347,7 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
       const monthIndex = monthDate.getUTCMonth();
       const totalDaysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
 
-      pod.members.forEach((membership) => {
+      activeMembers.forEach((membership) => {
         const person = membership.person;
         const allocationPct = membership.allocation_pct / 100;
 
