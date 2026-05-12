@@ -66,6 +66,7 @@ export default function PodDetailPage() {
   const [projectToEdit, setProjectToEdit] = useState<PodProject | null>(null);
   const [showEditMemberDatesModal, setShowEditMemberDatesModal] = useState(false);
   const [memberToEdit, setMemberToEdit] = useState<PodMember | null>(null);
+  const [memberSort, setMemberSort] = useState<"default" | "name">("default");
 
   useEffect(() => {
     if (params.id) {
@@ -95,6 +96,13 @@ export default function PodDetailPage() {
   const handleRemoveProject = (projectId: string, projectName: string) => {
     setProjectToRemove({ id: projectId, name: projectName });
     setShowRemoveProjectModal(true);
+  };
+
+  const sortMembers = (members: PodMember[]) => {
+    if (memberSort === "name") {
+      return [...members].sort((a, b) => a.person.name.localeCompare(b.person.name));
+    }
+    return members;
   };
 
   if (loading) {
@@ -168,9 +176,22 @@ export default function PodDetailPage() {
         {/* Current Members */}
         <div className="bg-white rounded-lg shadow mb-6">
           <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-            <h2 className="text-xl font-semibold text-gray-900">
-              Current Members ({pod.active_members.length})
-            </h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-semibold text-gray-900">
+                Current Members ({pod.active_members.length})
+              </h2>
+              <button
+                onClick={() => setMemberSort(memberSort === "default" ? "name" : "default")}
+                className={`px-3 py-1 text-xs font-medium rounded-full border ${
+                  memberSort === "name"
+                    ? "bg-blue-100 text-blue-700 border-blue-300"
+                    : "bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200"
+                }`}
+                title={memberSort === "name" ? "Sorted A-Z (click to reset)" : "Sort alphabetically"}
+              >
+                A-Z {memberSort === "name" ? "✓" : "↕"}
+              </button>
+            </div>
             <button
               onClick={() => setShowAddMemberModal(true)}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
@@ -205,7 +226,7 @@ export default function PodDetailPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {pod.active_members.map((member) => (
+                  {sortMembers(pod.active_members).map((member) => (
                     <tr key={member.id}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {member.person.name}
@@ -277,7 +298,7 @@ export default function PodDetailPage() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {pod.historical_members.map((member) => (
+                    {sortMembers(pod.historical_members).map((member) => (
                       <tr key={member.id}>
                         <td className="px-6 py-4 whitespace-nowrap">
                           {member.person.name}
