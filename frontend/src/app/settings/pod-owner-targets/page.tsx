@@ -177,6 +177,12 @@ export default function PodOwnerTargetsPage() {
             Set profitability and revenue-growth targets per pod owner for an Indian fiscal year
             (April – March). Owner / finance access only.
           </p>
+          <p className="text-xs text-gray-500 mt-1">
+            <strong>Baseline revenue</strong> is the <strong>full annual</strong> amount (typically last
+            FY's total revenue). The Pod Owner Financials report automatically scales it to any
+            partial period selected — e.g. for a 3-month view it compares against{" "}
+            <code className="text-gray-700">baseline × 3 / 12</code>.
+          </p>
         </div>
 
         {/* FY selector */}
@@ -219,7 +225,7 @@ export default function PodOwnerTargetsPage() {
                   <th className="px-4 py-3 text-left">Pod Owner</th>
                   <th className="px-4 py-3 text-right">Profitability target</th>
                   <th className="px-4 py-3 text-right">Revenue growth target</th>
-                  <th className="px-4 py-3 text-right">Baseline revenue (₹)</th>
+                  <th className="px-4 py-3 text-right" title="Full annual baseline — typically last FY's total revenue. The report scales this to the selected period automatically.">Annual baseline revenue (₹)</th>
                   <th className="px-4 py-3 text-left">Notes</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
