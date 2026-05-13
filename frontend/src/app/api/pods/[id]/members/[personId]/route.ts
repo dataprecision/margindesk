@@ -51,6 +51,27 @@ export const PATCH = withAuth(async (req: NextRequest, { user, params }: { user:
       );
     }
 
+    // Guard: dates can't extend past the person's exit
+    const personExit = await prisma.person.findUnique({
+      where: { id: personId },
+      select: { name: true, end_date: true },
+    });
+    if (personExit?.end_date) {
+      const exitStr = personExit.end_date.toISOString().substring(0, 10);
+      if (newStartDate > personExit.end_date) {
+        return NextResponse.json(
+          { error: `${personExit.name} exited on ${exitStr} — start_date cannot be after that.` },
+          { status: 400 }
+        );
+      }
+      if (newEndDate && newEndDate > personExit.end_date) {
+        return NextResponse.json(
+          { error: `${personExit.name} exited on ${exitStr} — end_date cannot be after that.` },
+          { status: 400 }
+        );
+      }
+    }
+
     const updatedMembership = await prisma.podMembership.update({
       where: { id: membership.id },
       data: {

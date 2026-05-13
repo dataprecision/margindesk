@@ -268,6 +268,20 @@ async function syncEmployees(user: any, sinceMs: number | null = null) {
           });
           updatedCount++;
           syncedCount++;
+
+          // Auto-close: if the person now has an exit date, cap any still-open
+          // PodMembership rows at that exit so they stop counting as active.
+          // Idempotent — re-running on an already-closed-out person is a no-op.
+          if (endDate) {
+            const closed = await prisma.podMembership.updateMany({
+              where: { person_id: existingPerson.id, end_date: null },
+              data: { end_date: endDate, updated_at: new Date() },
+            });
+            if (closed.count > 0) {
+              console.log(`📝 [Zoho People Sync] Closed ${closed.count} open pod membership(s) for ${fullName} at exit ${dateOfExit}`);
+            }
+          }
+
           console.log(`✅ [Zoho People Sync] Updated: ${fullName}${endDate ? ` (Exit: ${dateOfExit})` : ""}`);
         } else {
           console.log(`➕ [Zoho People Sync] Creating new employee: ${fullName} (Zoho ID: ${zohoNumericId}, Code: ${employeeCode})`);

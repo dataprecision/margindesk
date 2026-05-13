@@ -155,6 +155,30 @@ export const POST = withAuth(async (req: NextRequest, { user, params }: { user: 
       );
     }
 
+    // Guard: cannot add a member whose membership starts after their exit date,
+    // and any explicit end_date can't be after their exit either.
+    const personEndDate = person.end_date;
+    if (personEndDate) {
+      const newStart = new Date(body.start_date);
+      const newEnd = body.end_date ? new Date(body.end_date) : null;
+      if (newStart > personEndDate) {
+        return NextResponse.json(
+          {
+            error: `${person.name} exited on ${personEndDate.toISOString().substring(0, 10)} — cannot add a membership starting after that date.`,
+          },
+          { status: 400 }
+        );
+      }
+      if (newEnd && newEnd > personEndDate) {
+        return NextResponse.json(
+          {
+            error: `${person.name} exited on ${personEndDate.toISOString().substring(0, 10)} — membership end_date cannot be after that.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // Check if person already has active membership in this pod
     const existingActiveMembership = await prisma.podMembership.findFirst({
       where: {
