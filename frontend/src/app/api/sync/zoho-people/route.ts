@@ -12,19 +12,28 @@ const prisma = new PrismaClient();
  */
 export const POST = withAdminRole(async (req, { user }) => {
   try {
+    // Optional ?since_hours=N — when present, only records whose Zoho ModifiedTime
+    // is newer than (now - N hours) get processed. Used by the nightly cron to
+    // skip the ~99% of rows that haven't changed since last run.
+    const sinceHoursRaw = new URL(req.url).searchParams.get("since_hours");
+    const sinceMs =
+      sinceHoursRaw && Number.isFinite(Number(sinceHoursRaw))
+        ? Date.now() - Number(sinceHoursRaw) * 3600 * 1000
+        : null;
+
     const body = await req.json();
     const { syncType = "employees" } = body;
 
     if (syncType === "employees") {
-      return await syncEmployees(user);
+      return await syncEmployees(user, sinceMs);
     } else if (syncType === "leaves") {
-      return await syncLeaves(user);
+      return await syncLeaves(user, sinceMs);
     } else if (syncType === "holidays") {
       return await syncHolidays(user);
     } else if (syncType === "all") {
       // Sync everything in sequence
-      const employeeResult = await syncEmployees(user);
-      const leavesResult = await syncLeaves(user);
+      const employeeResult = await syncEmployees(user, sinceMs);
+      const leavesResult = await syncLeaves(user, sinceMs);
       const holidaysResult = await syncHolidays(user);
 
       return NextResponse.json({
@@ -75,12 +84,13 @@ function parseZohoDate(dateString: string): Date | null {
   return null;
 }
 
-async function syncEmployees(user: any) {
+async function syncEmployees(user: any, sinceMs: number | null = null) {
   const syncLogStart = new Date();
   let syncedCount = 0;
   let createdCount = 0;
   let updatedCount = 0;
   let errorCount = 0;
+  let skippedUnchanged = 0;
   const errors: string[] = [];
 
   try {
@@ -188,6 +198,17 @@ async function syncEmployees(user: any) {
         if (!employeeDataArray || !Array.isArray(employeeDataArray) || employeeDataArray.length === 0) {
           console.warn(`⚠️ [Zoho People Sync] Skipping invalid employee record structure`);
           continue;
+        }
+
+        // Cron delta: skip records older than the cutoff (saves DB upserts + audit churn).
+        // ModifiedTime is epoch milliseconds as a string, e.g. "1778653852993".
+        if (sinceMs !== null) {
+          const modifiedRaw = employeeDataArray[0]?.ModifiedTime;
+          const modifiedMs = modifiedRaw ? parseInt(modifiedRaw, 10) : NaN;
+          if (Number.isFinite(modifiedMs) && modifiedMs < sinceMs) {
+            skippedUnchanged++;
+            continue;
+          }
         }
 
         const employee = employeeDataArray[0]; // Get the first (and usually only) item
@@ -299,6 +320,16 @@ async function syncEmployees(user: any) {
         const employeeDataArray = employeeRecord[employeeZohoId];
         if (!employeeDataArray || !Array.isArray(employeeDataArray) || employeeDataArray.length === 0) {
           continue;
+        }
+
+        // Same cron-delta filter as first pass — Zoho's ModifiedTime bumps when
+        // reporting_to changes, so unchanged employees can't have manager changes.
+        if (sinceMs !== null) {
+          const modifiedRaw = employeeDataArray[0]?.ModifiedTime;
+          const modifiedMs = modifiedRaw ? parseInt(modifiedRaw, 10) : NaN;
+          if (Number.isFinite(modifiedMs) && modifiedMs < sinceMs) {
+            continue;
+          }
         }
 
         const employee = employeeDataArray[0];
@@ -491,6 +522,7 @@ async function syncEmployees(user: any) {
           updated: updatedCount,
           errors: errorCount,
           total: allEmployees.length,
+          skipped_unchanged: skippedUnchanged,
           managers_updated: managerUpdatedCount,
           manager_history_created: managerHistoryCreatedCount,
           manager_history_closed: managerHistoryClosedCount,
@@ -549,12 +581,13 @@ async function syncEmployees(user: any) {
  * Sync leaves from Zoho People
  * https://www.zoho.com/people/api/leave-management.html
  */
-async function syncLeaves(user: any) {
+async function syncLeaves(user: any, sinceMs: number | null = null) {
   const syncLogStart = new Date();
   let syncedCount = 0;
   let createdCount = 0;
   let updatedCount = 0;
   let errorCount = 0;
+  let skippedUnchanged = 0;
   const errors: string[] = [];
 
   try {
@@ -642,6 +675,16 @@ async function syncLeaves(user: any) {
         if (!leaveDataArray || !Array.isArray(leaveDataArray) || leaveDataArray.length === 0) {
           console.warn(`⚠️ [Zoho People Sync] Skipping leave - invalid structure:`, leaveRecord);
           continue;
+        }
+
+        // Cron delta: skip leaves untouched since the cutoff. ModifiedTime is epoch-ms string.
+        if (sinceMs !== null) {
+          const modifiedRaw = leaveDataArray[0]?.ModifiedTime;
+          const modifiedMs = modifiedRaw ? parseInt(modifiedRaw, 10) : NaN;
+          if (Number.isFinite(modifiedMs) && modifiedMs < sinceMs) {
+            skippedUnchanged++;
+            continue;
+          }
         }
 
         const leave = leaveDataArray[0];
@@ -750,6 +793,7 @@ async function syncLeaves(user: any) {
           updated: updatedCount,
           errors: errorCount,
           total: allLeaves.length,
+          skipped_unchanged: skippedUnchanged,
         },
       },
     });
