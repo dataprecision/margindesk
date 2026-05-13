@@ -245,6 +245,18 @@ async function syncContacts(user: any) {
           where: { zoho_contact_id: contact.contact_id },
         });
 
+        // Zoho returns tags as objects: { tag_name: "Country", tag_option_name: "India", ... }
+        // Client.tags is String[], so flatten to "Category:Value" strings to preserve both.
+        const flattenedTags: string[] = Array.isArray(contact.tags)
+          ? contact.tags
+              .map((t: any) =>
+                t?.tag_name && t?.tag_option_name
+                  ? `${t.tag_name}:${t.tag_option_name}`
+                  : t?.tag_option_name || null
+              )
+              .filter((s: string | null): s is string => Boolean(s))
+          : [];
+
         if (existingClient) {
           // Update existing client
           await prisma.client.update({
@@ -254,6 +266,7 @@ async function syncContacts(user: any) {
               billing_currency: contact.currency_code || "INR",
               gstin: contact.gst_no || undefined,
               pan: contact.tax_id || undefined,
+              tags: flattenedTags,
             },
           });
           updatedCount++;
@@ -267,7 +280,7 @@ async function syncContacts(user: any) {
               billing_currency: contact.currency_code || "INR",
               gstin: contact.gst_no || undefined,
               pan: contact.tax_id || undefined,
-              tags: contact.tags || [],
+              tags: flattenedTags,
             },
           });
           createdCount++;
