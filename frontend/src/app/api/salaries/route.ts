@@ -40,9 +40,12 @@ export const GET = withAuth(async (req, { user }) => {
     }
     const monthDate = new Date(Date.UTC(year, monthNum, 0, 12, 0, 0)); // Last day of the month at noon UTC
 
-    // Build where clause
+    // Build where clause. Exclude rows with zero total — the salary CSV import
+    // keeps writing ₹0 rows for ex-employees and a handful of active people with
+    // missing payroll data; neither should pad the headcount.
     const where: any = {
       month: monthDate,
+      total: { gt: 0 },
     };
 
     // Apply support staff filter
