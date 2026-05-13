@@ -38,6 +38,7 @@ model Project {
   updated_at         DateTime            @updatedAt
   accrual_lines      AccrualLine[]
   allocations        Allocation[]
+  bill_line_items    BillLineItem[]
   billing_plans      BillingPlan?
   doc_spaces         DocSpace[]
   invoices           Invoice[]
@@ -448,15 +449,18 @@ model BillLineItem {
   tds_tax_amount    Decimal  @default(0) @db.Decimal(15, 2)
   customer_id       String?
   customer_name     String?
+  project_id        String?  // null = untagged; tagged line items count as that project's direct expense for the bill's billed_for_month
   tags              String[] @default([])
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt
   bill              Bill     @relation(fields: [bill_id], references: [id], onDelete: Cascade)
+  project           Project? @relation(fields: [project_id], references: [id], onDelete: SetNull)
 
   @@index([bill_id])
   @@index([zoho_line_item_id])
   @@index([customer_id])
   @@index([item_id])
+  @@index([project_id])
 }
 
 model AccrualSnapshot {

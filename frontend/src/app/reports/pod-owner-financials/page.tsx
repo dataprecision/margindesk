@@ -8,6 +8,7 @@ interface PodResult {
   pod: { id: string; name: string; leader: { name: string } };
   revenue: number;
   salary_costs: number;
+  direct_expenses: number;
   gross_profit: number;
   gross_margin_pct: number;
   total_billable_hours: number;
@@ -61,6 +62,7 @@ interface ReportData {
     salary_costs: number;
     bench_salary_cost: number;
     total_salary_cost: number;
+    direct_expenses: number;
     gross_profit: number;
     gross_margin_pct: number;
     total_billable_hours: number;
@@ -97,7 +99,7 @@ export default function PodOwnerFinancialsPage() {
   // Sort state for the per-pod breakdown table. First click on a column sorts
   // it descending (high → low); clicking the same column toggles to ascending.
   type SortField =
-    | "name" | "leader" | "member_count" | "revenue" | "salary_costs"
+    | "name" | "leader" | "member_count" | "revenue" | "salary_costs" | "direct_expenses"
     | "gross_profit" | "gross_margin_pct" | "utilization_pct" | "billability_pct";
   const [sortField, setSortField] = useState<SortField>("salary_costs");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -455,6 +457,14 @@ export default function PodOwnerFinancialsPage() {
                             Salary Costs{sortArrow("salary_costs")}
                           </button>
                         </th>
+                        <th
+                          className="px-4 py-3 text-right text-sm font-semibold text-gray-700"
+                          title="Sum of BillLineItems tagged to projects in this pod, by Bill.cf_billed_for_month."
+                        >
+                          <button onClick={() => setSort("direct_expenses")} className="hover:text-blue-600">
+                            Direct Exp.{sortArrow("direct_expenses")}
+                          </button>
+                        </th>
                         <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">
                           <button onClick={() => setSort("gross_profit")} className="hover:text-blue-600">
                             Gross Profit{sortArrow("gross_profit")}
@@ -492,6 +502,7 @@ export default function PodOwnerFinancialsPage() {
                           <td className="px-4 py-3 text-center">{pod.member_count}</td>
                           <td className="px-4 py-3 text-right text-green-600">{formatCurrency(pod.revenue)}</td>
                           <td className="px-4 py-3 text-right text-red-600">{formatCurrency(pod.salary_costs)}</td>
+                          <td className="px-4 py-3 text-right text-red-600">{formatCurrency(pod.direct_expenses || 0)}</td>
                           <td className="px-4 py-3 text-right font-medium">{formatCurrency(pod.gross_profit)}</td>
                           <td className="px-4 py-3 text-center">
                             <span
@@ -563,13 +574,14 @@ export default function PodOwnerFinancialsPage() {
                               {formatCurrency(report.bench.salary_cost)}
                             </td>
                             <td className="px-4 py-3 text-right text-gray-400">—</td>
+                            <td className="px-4 py-3 text-right text-gray-400">—</td>
                             <td className="px-4 py-3 text-center text-gray-400">—</td>
                             <td className="px-4 py-3 text-center text-gray-400">—</td>
                             <td className="px-4 py-3 text-center text-gray-400">—</td>
                           </tr>
                           {benchExpanded && report.bench.people_count > 0 && (
                             <tr className="bg-amber-25">
-                              <td colSpan={9} className="px-6 py-4 bg-amber-50/40">
+                              <td colSpan={10} className="px-6 py-4 bg-amber-50/40">
                                 <div className="text-xs text-gray-600 mb-2">
                                   These reportees had no pod allocation for part of the period. Cost shown
                                   on the row above is the sum across all unallocated person-days, prorated
@@ -613,6 +625,7 @@ export default function PodOwnerFinancialsPage() {
                         <td className="px-4 py-3" colSpan={3}>Totals (incl. bench)</td>
                         <td className="px-4 py-3 text-right text-green-600">{formatCurrency(report.aggregate.revenue)}</td>
                         <td className="px-4 py-3 text-right text-red-600">{formatCurrency(report.aggregate.total_salary_cost)}</td>
+                        <td className="px-4 py-3 text-right text-red-600">{formatCurrency(report.aggregate.direct_expenses || 0)}</td>
                         <td className="px-4 py-3 text-right">{formatCurrency(report.aggregate.gross_profit)}</td>
                         <td className="px-4 py-3 text-center">{formatPercent(report.aggregate.gross_margin_pct)}</td>
                         <td className="px-4 py-3 text-center">{formatPercent(report.aggregate.overall_utilization_pct)}</td>

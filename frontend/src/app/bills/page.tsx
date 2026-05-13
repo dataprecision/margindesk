@@ -13,6 +13,15 @@ interface BillLineItem {
   tax_percentage: number;
   customer_name: string | null;
   account_name: string | null;
+  project_id: string | null;
+  project?: { id: string; name: string; status: string } | null;
+}
+
+interface ProjectOption {
+  id: string;
+  name: string;
+  client: { name: string };
+  status: string;
 }
 
 interface Bill {
@@ -68,6 +77,46 @@ export default function BillsPage() {
 
   // Track which bills are currently syncing details
   const [syncingDetails, setSyncingDetails] = useState<Set<string>>(new Set());
+
+  // Projects for the line-item project dropdown
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  // Track in-flight project-tag saves keyed by line_item_id
+  const [taggingLineItems, setTaggingLineItems] = useState<Set<string>>(new Set());
+
+  const tagLineItemProject = async (lineItemId: string, projectId: string | null) => {
+    setTaggingLineItems((s) => new Set(s).add(lineItemId));
+    try {
+      const res = await fetch(`/api/bills/line-items/${lineItemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        alert(j.error || "Failed to tag line item");
+        return;
+      }
+      const updated = await res.json();
+      setBills((prev) =>
+        prev.map((b) => ({
+          ...b,
+          line_items: b.line_items?.map((li) =>
+            li.id === lineItemId
+              ? { ...li, project_id: updated.line_item.project_id, project: updated.line_item.project }
+              : li
+          ),
+        }))
+      );
+    } catch (e: any) {
+      alert(e.message || "Failed to tag line item");
+    } finally {
+      setTaggingLineItems((s) => {
+        const next = new Set(s);
+        next.delete(lineItemId);
+        return next;
+      });
+    }
+  };
 
   const toggleRowExpansion = (billId: string) => {
     const newExpanded = new Set(expandedRows);
@@ -156,6 +205,10 @@ export default function BillsPage() {
   };
 
   useEffect(() => {
+    fetch("/api/projects?status=active")
+      .then((r) => r.json())
+      .then((d) => setProjects(d.projects || []))
+      .catch(() => {});
     fetchBills();
   }, []);
 
@@ -692,6 +745,7 @@ export default function BillsPage() {
                                           <th className="px-3 py-2 text-right text-xs font-semibold">Rate</th>
                                           <th className="px-3 py-2 text-right text-xs font-semibold">Tax</th>
                                           <th className="px-3 py-2 text-right text-xs font-semibold">Total</th>
+                                          <th className="px-3 py-2 text-left text-xs font-semibold" title="Tagging a line item to a project makes its amount count as that project's direct expense for the bill's billed-for-month.">Project (direct expense)</th>
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-gray-200">
@@ -718,6 +772,34 @@ export default function BillsPage() {
                                             </td>
                                             <td className="px-3 py-2 text-xs text-right font-medium">
                                               ₹{item.item_total.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                                            </td>
+                                            <td className="px-3 py-2 text-xs">
+                                              <select
+                                                value={item.project_id || ""}
+                                                disabled={taggingLineItems.has(item.id) || !bill.include_in_calculation}
+                                                onChange={(e) =>
+                                                  tagLineItemProject(item.id, e.target.value || null)
+                                                }
+                                                className="text-xs px-1 py-0.5 border border-gray-300 rounded max-w-[180px]"
+                                                title={
+                                                  !bill.include_in_calculation
+                                                    ? "Bill is excluded from calculation — tagging disabled"
+                                                    : item.project?.name || "Untagged"
+                                                }
+                                              >
+                                                <option value="">— Untagged —</option>
+                                                {/* Show currently-tagged project even if not active (e.g., completed) */}
+                                                {item.project && !projects.find((p) => p.id === item.project!.id) && (
+                                                  <option value={item.project.id}>
+                                                    {item.project.name} (current)
+                                                  </option>
+                                                )}
+                                                {projects.map((p) => (
+                                                  <option key={p.id} value={p.id}>
+                                                    {p.client?.name ? `${p.client.name} — ` : ""}{p.name}
+                                                  </option>
+                                                ))}
+                                              </select>
                                             </td>
                                           </tr>
                                         ))}

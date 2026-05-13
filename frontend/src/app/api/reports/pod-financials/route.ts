@@ -406,9 +406,56 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
       totalSalaryCosts += monthCost;
     });
 
+    // Direct project expenses: tagged BillLineItems whose Bill's
+    // cf_billed_for_month_unformatted falls within the period. Same monthly
+    // semantics as ProjectCost (stored as YYYY-MM-01), so use periodMonthEnd.
+    const podProjectIds = pod.projects
+      .filter((m) => !(m.end_date && m.start_date.toISOString().split("T")[0] === m.end_date.toISOString().split("T")[0]))
+      .map((m) => m.project.id);
+
+    const directExpenseLineItems = podProjectIds.length
+      ? await prisma.billLineItem.findMany({
+          where: {
+            project_id: { in: podProjectIds },
+            bill: {
+              include_in_calculation: true,
+              cf_billed_for_month_unformatted: { gte: startDate, lte: periodMonthEnd },
+            },
+          },
+          select: {
+            item_total: true,
+            project_id: true,
+            bill: {
+              select: {
+                id: true,
+                vendor_name: true,
+                bill_number: true,
+                cf_billed_for_month_unformatted: true,
+              },
+            },
+          },
+        })
+      : [];
+
+    const directExpensesByProject: Record<string, number> = {};
+    const directExpensesByMonth: Record<string, number> = {};
+    let totalDirectExpenses = 0;
+    for (const li of directExpenseLineItems) {
+      const amt = parseFloat(li.item_total.toString());
+      totalDirectExpenses += amt;
+      if (li.project_id) {
+        directExpensesByProject[li.project_id] =
+          (directExpensesByProject[li.project_id] ?? 0) + amt;
+      }
+      const monthIso = li.bill.cf_billed_for_month_unformatted?.toISOString().substring(0, 10);
+      if (monthIso) {
+        directExpensesByMonth[monthIso] = (directExpensesByMonth[monthIso] ?? 0) + amt;
+      }
+    }
+
     // Calculate totals
     const totalRevenue = Object.values(revenueByMonth).reduce((sum, val) => sum + val, 0);
-    const grossProfit = totalRevenue - totalSalaryCosts;
+    const grossProfit = totalRevenue - totalSalaryCosts - totalDirectExpenses;
     const grossMarginPct = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
 
     // Get overhead allocation if available
@@ -466,6 +513,9 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
           by_month: costsByMonth,
           overheads: totalOverheads,
           overhead_by_month: overheadByMonth,
+          direct_expenses: totalDirectExpenses,
+          direct_expenses_by_project: directExpensesByProject,
+          direct_expenses_by_month: directExpensesByMonth,
         },
         gross_profit: {
           amount: grossProfit,

@@ -26,6 +26,9 @@ interface PodReport {
       by_month: Record<string, number>;
       overheads: number;
       overhead_by_month: Record<string, number>;
+      direct_expenses: number;
+      direct_expenses_by_project: Record<string, number>;
+      direct_expenses_by_month: Record<string, number>;
     };
     gross_profit: {
       amount: number;
@@ -258,7 +261,7 @@ export default function PodFinancialsReportPage() {
         {report && (
           <div className="space-y-6">
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <div className="bg-white p-6 rounded-lg shadow">
                 <div className="text-sm text-gray-600 mb-1">Total Revenue</div>
                 <div className="text-2xl font-bold text-green-600">
@@ -269,6 +272,15 @@ export default function PodFinancialsReportPage() {
                 <div className="text-sm text-gray-600 mb-1">Salary Costs</div>
                 <div className="text-2xl font-bold text-red-600">
                   {formatCurrency(report.financials.costs.salaries)}
+                </div>
+              </div>
+              <div
+                className="bg-white p-6 rounded-lg shadow"
+                title="Tagged BillLineItems whose bill's billed-for-month falls in this period. Tag bills to projects on the /bills page."
+              >
+                <div className="text-sm text-gray-600 mb-1">Direct Expenses</div>
+                <div className="text-2xl font-bold text-red-600">
+                  {formatCurrency(report.financials.costs.direct_expenses)}
                 </div>
               </div>
               <div className="bg-white p-6 rounded-lg shadow">

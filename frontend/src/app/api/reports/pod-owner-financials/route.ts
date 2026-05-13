@@ -78,6 +78,7 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
         bench: { salary_cost: 0, people_count: 0, people: [] },
         aggregate: {
           revenue: 0, salary_costs: 0, bench_salary_cost: 0, total_salary_cost: 0,
+          direct_expenses: 0,
           gross_profit: 0, gross_margin_pct: 0,
           total_billable_hours: 0, total_working_hours: 0, overall_utilization_pct: 0,
         },
@@ -170,6 +171,38 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
       },
     });
 
+    // Direct project expenses — tagged BillLineItems whose bill's
+    // cf_billed_for_month_unformatted falls within the period and whose bill
+    // is included in calculation. Stored same as ProjectCost.period_month
+    // (YYYY-MM-01), so compare against periodMonthEnd not endDate.
+    const allProjectIdsInPods = Array.from(
+      new Set(podProjectMappings.map((pm) => pm.project.id))
+    );
+    const directExpenseLineItems = allProjectIdsInPods.length
+      ? await prisma.billLineItem.findMany({
+          where: {
+            project_id: { in: allProjectIdsInPods },
+            bill: {
+              include_in_calculation: true,
+              cf_billed_for_month_unformatted: { gte: startDate, lte: periodMonthEnd },
+            },
+          },
+          select: {
+            item_total: true,
+            project_id: true,
+            bill: { select: { cf_billed_for_month_unformatted: true } },
+          },
+        })
+      : [];
+
+    // Aggregate by project_id and by (project_id, month) — both will be useful
+    const directExpenseByProject = new Map<string, number>();
+    for (const li of directExpenseLineItems) {
+      if (!li.project_id) continue;
+      const amt = parseFloat(li.item_total.toString());
+      directExpenseByProject.set(li.project_id, (directExpenseByProject.get(li.project_id) ?? 0) + amt);
+    }
+
     // Calculate per-pod financials
     const podResults = pods.map((pod) => {
       const podMemberships = allMemberships
@@ -243,12 +276,22 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
         totalWorking += businessDays * 8;
       });
 
-      const grossProfit = podRevenue - podSalaryCosts;
+      // Direct expenses across all this pod's tagged projects, this period
+      const podProjectIds = podMappings
+        .filter((m) => !(m.end_date && m.start_date.toISOString().split("T")[0] === m.end_date.toISOString().split("T")[0]))
+        .map((m) => m.project.id);
+      const podDirectExpenses = podProjectIds.reduce(
+        (sum, pid) => sum + (directExpenseByProject.get(pid) ?? 0),
+        0
+      );
+
+      const grossProfit = podRevenue - podSalaryCosts - podDirectExpenses;
 
       return {
         pod: { id: pod.id, name: pod.name, leader: pod.leader },
         revenue: podRevenue,
         salary_costs: podSalaryCosts,
+        direct_expenses: podDirectExpenses,
         gross_profit: grossProfit,
         gross_margin_pct: podRevenue > 0 ? (grossProfit / podRevenue) * 100 : 0,
         total_billable_hours: totalBillable,
@@ -434,6 +477,7 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
       salary_costs: podResults.reduce((s, p) => s + p.salary_costs, 0),
       bench_salary_cost: benchTotalCost,
       total_salary_cost: podResults.reduce((s, p) => s + p.salary_costs, 0) + benchTotalCost,
+      direct_expenses: podResults.reduce((s, p) => s + (p.direct_expenses || 0), 0),
       gross_profit: podResults.reduce((s, p) => s + p.gross_profit, 0),
       gross_margin_pct: 0,
       total_billable_hours: podResults.reduce((s, p) => s + p.total_billable_hours, 0),

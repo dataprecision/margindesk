@@ -70,6 +70,9 @@ export const GET = withAdminRole(async (req, { user }) => {
         include: {
           line_items: {
             orderBy: { item_total: 'desc' },
+            include: {
+              project: { select: { id: true, name: true, status: true } },
+            },
           },
         },
       }),
