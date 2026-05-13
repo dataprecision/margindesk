@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 interface PodReport {
   pod: {
@@ -68,6 +68,7 @@ interface Pod {
 
 export default function PodFinancialsReportPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [pods, setPods] = useState<Pod[]>([]);
   const [selectedPodId, setSelectedPodId] = useState("");
   const [startMonth, setStartMonth] = useState("");
@@ -75,18 +76,44 @@ export default function PodFinancialsReportPage() {
   const [report, setReport] = useState<PodReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [autoGenerate, setAutoGenerate] = useState(false);
 
   useEffect(() => {
     fetchPods();
 
-    // Set default date range to last 3 months
-    const now = new Date();
-    // Start: 3 months ago
-    const start = new Date(now.getFullYear(), now.getMonth() - 3, 1);
-    // End: today
-    setStartMonth(start.toISOString().substring(0, 10));
-    setEndMonth(now.toISOString().substring(0, 10));
+    // Check for URL query params
+    const qPodId = searchParams.get("pod_id");
+    const qStart = searchParams.get("start");
+    const qEnd = searchParams.get("end");
+
+    if (qStart) {
+      setStartMonth(qStart);
+    } else {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+      setStartMonth(`${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`);
+    }
+
+    if (qEnd) {
+      setEndMonth(qEnd);
+    } else {
+      const now = new Date();
+      setEndMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+    }
+
+    if (qPodId) {
+      setSelectedPodId(qPodId);
+      setAutoGenerate(true);
+    }
   }, []);
+
+  // Auto-generate report when navigated with query params
+  useEffect(() => {
+    if (autoGenerate && pods.length > 0 && selectedPodId) {
+      setAutoGenerate(false);
+      fetchReport();
+    }
+  }, [autoGenerate, pods, selectedPodId]);
 
   const fetchPods = async () => {
     try {
@@ -94,7 +121,8 @@ export default function PodFinancialsReportPage() {
       if (!res.ok) throw new Error("Failed to fetch pods");
       const data = await res.json();
       setPods(data.pods);
-      if (data.pods.length > 0) {
+      // Only set default pod if no query param was provided
+      if (data.pods.length > 0 && !searchParams.get("pod_id")) {
         setSelectedPodId(data.pods[0].id);
       }
     } catch (err) {
@@ -104,7 +132,7 @@ export default function PodFinancialsReportPage() {
 
   const fetchReport = async () => {
     if (!selectedPodId || !startMonth || !endMonth) {
-      setError("Please select pod and date range");
+      setError("Please select pod and month range");
       return;
     }
 
@@ -112,10 +140,15 @@ export default function PodFinancialsReportPage() {
       setLoading(true);
       setError(null);
 
+      // End month: use last day of selected month
+      const [endYear, endMon] = endMonth.split("-").map(Number);
+      const lastDay = new Date(endYear, endMon, 0).getDate();
+      const endDate = `${endMonth}-${String(lastDay).padStart(2, "0")}`;
+
       const params = new URLSearchParams({
         pod_id: selectedPodId,
-        start_month: startMonth,
-        end_month: endMonth,
+        start_month: `${startMonth}-01`,
+        end_month: endDate,
       });
 
       const res = await fetch(`/api/reports/pod-financials?${params.toString()}`);
@@ -153,6 +186,17 @@ export default function PodFinancialsReportPage() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6">
+          {searchParams.get("from") === "pod-owner" && (
+            <button
+              onClick={() => {
+                const ownerId = searchParams.get("owner_id");
+                router.push(`/reports/pod-owner-financials${ownerId ? `?owner_id=${ownerId}&start=${startMonth}&end=${endMonth}` : ""}`);
+              }}
+              className="text-blue-600 hover:text-blue-800 mb-2 text-sm"
+            >
+              ← Back to Pod Owner Report
+            </button>
+          )}
           <h1 className="text-3xl font-bold text-gray-900">Pod Financial & Utilization Report</h1>
           <p className="text-gray-600 mt-2">Revenue, costs, profitability, and resource utilization</p>
         </div>
@@ -176,18 +220,18 @@ export default function PodFinancialsReportPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Month</label>
               <input
-                type="date"
+                type="month"
                 value={startMonth}
                 onChange={(e) => setStartMonth(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-md"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">End Month</label>
               <input
-                type="date"
+                type="month"
                 value={endMonth}
                 onChange={(e) => setEndMonth(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-md"

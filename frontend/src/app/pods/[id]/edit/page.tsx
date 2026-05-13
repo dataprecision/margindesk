@@ -9,11 +9,17 @@ interface PodDetail {
   description: string | null;
   status: string;
   leader_id: string;
+  owner_id: string | null;
   leader: {
     id: string;
     name: string;
     employee_code: string;
   };
+  owner: {
+    id: string;
+    name: string;
+    person: { id: string; name: string };
+  } | null;
 }
 
 export default function EditPodPage() {
@@ -23,8 +29,10 @@ export default function EditPodPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [leaderId, setLeaderId] = useState("");
+  const [ownerId, setOwnerId] = useState("");
   const [status, setStatus] = useState("active");
   const [people, setPeople] = useState<any[]>([]);
+  const [podOwners, setPodOwners] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +41,7 @@ export default function EditPodPage() {
     if (params.id) {
       fetchPod();
       fetchPeople();
+      fetchPodOwners();
     }
   }, [params.id]);
 
@@ -46,6 +55,7 @@ export default function EditPodPage() {
       setName(data.name);
       setDescription(data.description || "");
       setLeaderId(data.leader_id);
+      setOwnerId(data.owner_id || "");
       setStatus(data.status);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch pod");
@@ -65,6 +75,17 @@ export default function EditPodPage() {
     }
   };
 
+  const fetchPodOwners = async () => {
+    try {
+      const res = await fetch("/api/pod-owners?active_only=true");
+      if (!res.ok) return;
+      const data = await res.json();
+      setPodOwners(data.owners || []);
+    } catch (err) {
+      console.error("Error fetching pod owners:", err);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -78,6 +99,7 @@ export default function EditPodPage() {
           name,
           description: description || null,
           leader_id: leaderId,
+          owner_id: ownerId || null,
           status,
         }),
       });
@@ -232,6 +254,25 @@ export default function EditPodPage() {
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
                 <option value="archived">Archived</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Pod Owner
+              </label>
+              <select
+                value={ownerId}
+                onChange={(e) => setOwnerId(e.target.value)}
+                disabled={saving}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">None</option>
+                {podOwners.map((owner: any) => (
+                  <option key={owner.id} value={owner.id}>
+                    {owner.name} ({owner.person.name})
+                  </option>
+                ))}
               </select>
             </div>
 

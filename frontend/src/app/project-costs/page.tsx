@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 
 interface ProjectCost {
   id: string;
@@ -41,6 +42,8 @@ interface CellData {
 
 export default function ProjectCostsPage() {
   const router = useRouter();
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === "owner" || session?.user?.role === "finance";
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -434,12 +437,14 @@ export default function ProjectCostsPage() {
               </p>
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={() => setShowImportModal(true)}
-                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
-              >
-                Import CSV
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => setShowImportModal(true)}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+                >
+                  Import CSV
+                </button>
+              )}
               <button
                 onClick={() => fetchProjectCosts()}
                 disabled={saving}
@@ -447,13 +452,15 @@ export default function ProjectCostsPage() {
               >
                 Refresh
               </button>
-              <button
-                onClick={handleSave}
-                disabled={saving || editedCells.size === 0}
-                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
-              >
-                {saving ? "Saving..." : `Save Changes (${editedCells.size})`}
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={handleSave}
+                  disabled={saving || editedCells.size === 0}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+                >
+                  {saving ? "Saving..." : `Save Changes (${editedCells.size})`}
+                </button>
+              )}
             </div>
           </div>
 
@@ -601,9 +608,10 @@ export default function ProjectCostsPage() {
                             }
                             onKeyDown={(e) => handleKeyDown(e, project.id, month)}
                             onFocus={() => setSelectedCell(cellKey)}
+                            readOnly={!isAdmin}
                             className={`w-full px-3 py-2 text-right focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                               isEdited ? "bg-yellow-50 font-semibold" : "bg-transparent"
-                            }`}
+                            } ${!isAdmin ? "cursor-default" : ""}`}
                             placeholder="0"
                           />
                         </td>

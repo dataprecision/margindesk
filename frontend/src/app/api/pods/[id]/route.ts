@@ -22,6 +22,13 @@ export const GET = withAuth(async (req: NextRequest, { user, params }: { user: a
             employee_code: true,
           },
         },
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            person: { select: { id: true, name: true } },
+          },
+        },
         members: {
           include: {
             person: {
@@ -135,6 +142,7 @@ export const PATCH = withAuth(async (req: NextRequest, { user, params }: { user:
         name: body.name !== undefined ? body.name : currentPod.name,
         description: body.description !== undefined ? body.description : currentPod.description,
         leader_id: body.leader_id !== undefined ? body.leader_id : currentPod.leader_id,
+        owner_id: body.owner_id !== undefined ? body.owner_id || null : currentPod.owner_id,
         status: body.status !== undefined ? body.status : currentPod.status,
         updated_at: new Date(),
       },

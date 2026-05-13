@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 
 interface Pod {
   id: string;
@@ -13,6 +14,11 @@ interface Pod {
     name: string;
     employee_code: string;
   };
+  owner: {
+    id: string;
+    name: string;
+    person: { id: string; name: string };
+  } | null;
   member_count: number;
   active_project_count: number;
   created_at: string;
@@ -20,6 +26,8 @@ interface Pod {
 
 export default function PodsPage() {
   const router = useRouter();
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === "owner" || session?.user?.role === "finance";
   const [pods, setPods] = useState<Pod[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,12 +98,14 @@ export default function PodsPage() {
               <option value="inactive">Inactive</option>
               <option value="archived">Archived</option>
             </select>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-            >
-              + Create Pod
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                + Create Pod
+              </button>
+            )}
           </div>
         </div>
 
@@ -110,12 +120,14 @@ export default function PodsPage() {
         {pods.length === 0 ? (
           <div className="bg-white rounded-lg shadow p-12 text-center">
             <p className="text-gray-500 text-lg mb-4">No pods found</p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-            >
-              Create First Pod
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Create First Pod
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
@@ -150,6 +162,12 @@ export default function PodsPage() {
                         <span className="font-medium">Leader:</span>{" "}
                         {pod.leader.name} ({pod.leader.employee_code})
                       </div>
+                      {pod.owner && (
+                        <div>
+                          <span className="font-medium">Owner:</span>{" "}
+                          {pod.owner.name}
+                        </div>
+                      )}
                       <div>
                         <span className="font-medium">{pod.member_count}</span>{" "}
                         Members
@@ -206,13 +224,16 @@ function CreatePodModal({ onClose, onSuccess }: CreatePodModalProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [leaderId, setLeaderId] = useState("");
+  const [ownerId, setOwnerId] = useState("");
   const [status, setStatus] = useState("active");
   const [people, setPeople] = useState<any[]>([]);
+  const [podOwners, setPodOwners] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchPeople();
+    fetchPodOwners();
   }, []);
 
   const fetchPeople = async () => {
@@ -223,6 +244,17 @@ function CreatePodModal({ onClose, onSuccess }: CreatePodModalProps) {
       setPeople(data.people || []);
     } catch (err) {
       console.error("Error fetching people:", err);
+    }
+  };
+
+  const fetchPodOwners = async () => {
+    try {
+      const res = await fetch("/api/pod-owners?active_only=true");
+      if (!res.ok) return;
+      const data = await res.json();
+      setPodOwners(data.owners || []);
+    } catch (err) {
+      console.error("Error fetching pod owners:", err);
     }
   };
 
@@ -239,6 +271,7 @@ function CreatePodModal({ onClose, onSuccess }: CreatePodModalProps) {
           name,
           description: description || null,
           leader_id: leaderId,
+          owner_id: ownerId || null,
           status,
         }),
       });
@@ -330,6 +363,25 @@ function CreatePodModal({ onClose, onSuccess }: CreatePodModalProps) {
             >
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Pod Owner
+            </label>
+            <select
+              value={ownerId}
+              onChange={(e) => setOwnerId(e.target.value)}
+              disabled={saving}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            >
+              <option value="">None</option>
+              {podOwners.map((owner: any) => (
+                <option key={owner.id} value={owner.id}>
+                  {owner.name} ({owner.person.name})
+                </option>
+              ))}
             </select>
           </div>
 

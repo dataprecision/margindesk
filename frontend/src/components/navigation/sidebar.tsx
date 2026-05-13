@@ -50,15 +50,17 @@ export default function Sidebar() {
     : allNavItems;
 
   const settingsItems = [
+    { href: "/settings/pod-owners", label: "Pod Owners", icon: "👑" },
     { href: "/settings/products", label: "Products", icon: "📦" },
     { href: "/settings/import-data", label: "Import Data", icon: "📥" },
     { href: "/settings/import-salary", label: "Import Salary", icon: "💵" },
   ];
 
   const allReportItems = [
-    { href: "/salaries", label: "Salaries", icon: "💵", pmVisible: true },
-    { href: "/reports/profit-loss", label: "P&L Report", icon: "💼", pmVisible: true },
+    { href: "/salaries", label: "Salaries", icon: "💵", pmVisible: false },
+    { href: "/reports/profit-loss", label: "P&L Report", icon: "💼", pmVisible: false },
     { href: "/reports/pod-financials", label: "Pod Financials", icon: "📈", pmVisible: true },
+    { href: "/reports/pod-owner-financials", label: "Pod Owner Report", icon: "🏢", pmVisible: true },
     { href: "/reports/reselling-profitability", label: "Reselling Report", icon: "💹", pmVisible: false },
   ];
 

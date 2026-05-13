@@ -111,6 +111,7 @@ model Person {
   direct_reports      Person[]             @relation("ManagerReports")
   salary_records      PersonSalary[]
   pod_memberships     PodMembership[]
+  pod_owner_nodes     PodOwner[]
   timesheet_entries   TimesheetEntry[]
 
   @@index([email])
@@ -609,19 +610,42 @@ model IntegrationSettings {
   @@index([key])
 }
 
+model PodOwner {
+  id         String         @id @default(cuid())
+  person_id  String
+  parent_id  String?
+  name       String
+  start_date DateTime
+  end_date   DateTime?
+  created_at DateTime       @default(now())
+  updated_at DateTime       @updatedAt
+
+  person     Person         @relation(fields: [person_id], references: [id])
+  parent     PodOwner?      @relation("PodOwnerHierarchy", fields: [parent_id], references: [id])
+  children   PodOwner[]     @relation("PodOwnerHierarchy")
+  pods       FinancialPod[]
+
+  @@index([person_id])
+  @@index([parent_id])
+  @@index([end_date])
+}
+
 model FinancialPod {
   id          String              @id @default(cuid())
   name        String
   description String?
   leader_id   String
+  owner_id    String?
   status      PodStatus           @default(active)
   created_at  DateTime            @default(now())
   updated_at  DateTime            @updatedAt
   leader      Person              @relation("PodLeader", fields: [leader_id], references: [id])
+  owner       PodOwner?           @relation(fields: [owner_id], references: [id])
   members     PodMembership[]
   projects    PodProjectMapping[]
 
   @@index([leader_id])
+  @@index([owner_id])
   @@index([status])
 }
 

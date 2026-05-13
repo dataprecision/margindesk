@@ -1,3 +1,24 @@
 .DS_Store
 .serena
 .claude
+
+# Next.js standalone build artifacts at repo root
+/.next/
+/node_modules/
+/server.js
+/package.json
+/prisma/
+
+# Deploy bundles
+*.tar.gz
+
+# Forensic / incident response
+/remediation-log/
+/frontend/remediation-log/
+/frontend/xmrig*
+/frontend/scanner_linux
+/frontend/next
+/frontend/margindesk-frontend@*
+
+# Debug samples
+/bill-*.json

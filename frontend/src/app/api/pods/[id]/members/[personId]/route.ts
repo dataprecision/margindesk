@@ -87,10 +87,70 @@ export const PATCH = withAuth(async (req: NextRequest, { user, params }: { user:
   }
 });
 
+/**
+ * Permanently delete a historical membership record (owner only)
+ * Query param: membership_id (required), permanent=true
+ */
 export const DELETE = withAuth(async (req: NextRequest, { user, params }: { user: any; params: any }) => {
   try {
     const { id, personId } = await params;
     const { searchParams } = new URL(req.url);
+    const permanent = searchParams.get("permanent");
+    const membershipId = searchParams.get("membership_id");
+
+    // Permanent delete of historical membership (owner only)
+    if (permanent === "true" && membershipId) {
+      if (user.role !== "owner") {
+        return NextResponse.json(
+          { error: "Only owners can permanently delete membership records" },
+          { status: 403 }
+        );
+      }
+
+      const membership = await prisma.podMembership.findUnique({
+        where: { id: membershipId },
+        include: {
+          person: { select: { id: true, name: true } },
+          pod: { select: { id: true, name: true } },
+        },
+      });
+
+      if (!membership) {
+        return NextResponse.json(
+          { error: "Membership not found" },
+          { status: 404 }
+        );
+      }
+
+      if (membership.pod_id !== id || membership.person_id !== personId) {
+        return NextResponse.json(
+          { error: "Membership does not match pod/person" },
+          { status: 400 }
+        );
+      }
+
+      await prisma.podMembership.delete({ where: { id: membershipId } });
+
+      await prisma.auditLog.create({
+        data: {
+          actor_id: user.id,
+          entity: "PodMembership",
+          entity_id: membershipId,
+          action: "delete",
+          before_json: membership,
+          after_json: null,
+        },
+      });
+
+      console.log(`🗑️ Membership permanently deleted: ${membership.person.name} from ${membership.pod.name}`);
+
+      return NextResponse.json({
+        success: true,
+        message: "Membership record permanently deleted",
+      });
+    }
+
+    // Soft delete (set end_date) - existing behavior
     const endDateParam = searchParams.get("end_date");
 
     console.log("Removing member from pod:", { pod_id: id, person_id: personId, end_date: endDateParam });

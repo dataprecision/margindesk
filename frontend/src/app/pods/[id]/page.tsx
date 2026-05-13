@@ -51,6 +51,7 @@ export default function PodDetailPage() {
   const router = useRouter();
   const params = useParams();
   const { data: session } = useSession();
+  const isAdmin = session?.user?.role === "owner" || session?.user?.role === "finance";
   const [pod, setPod] = useState<PodDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +68,9 @@ export default function PodDetailPage() {
   const [showEditMemberDatesModal, setShowEditMemberDatesModal] = useState(false);
   const [memberToEdit, setMemberToEdit] = useState<PodMember | null>(null);
   const [memberSort, setMemberSort] = useState<"default" | "name">("default");
+  const [showDeleteMemberModal, setShowDeleteMemberModal] = useState(false);
+  const [memberToDelete, setMemberToDelete] = useState<PodMember | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (params.id) {
@@ -96,6 +100,28 @@ export default function PodDetailPage() {
   const handleRemoveProject = (projectId: string, projectName: string) => {
     setProjectToRemove({ id: projectId, name: projectName });
     setShowRemoveProjectModal(true);
+  };
+
+  const handleDeleteMembership = async () => {
+    if (!memberToDelete || !pod) return;
+    try {
+      setDeleting(true);
+      const res = await fetch(
+        `/api/pods/${pod.id}/members/${memberToDelete.person.id}?permanent=true&membership_id=${memberToDelete.id}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to delete membership");
+      }
+      setShowDeleteMemberModal(false);
+      setMemberToDelete(null);
+      fetchPod();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete membership");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const sortMembers = (members: PodMember[]) => {
@@ -162,14 +188,19 @@ export default function PodDetailPage() {
               )}
               <p className="text-sm text-gray-500 mt-2">
                 Leader: {pod.leader.name} ({pod.leader.employee_code})
+                {pod.owner && (
+                  <span className="ml-4">Owner: {pod.owner.name}</span>
+                )}
               </p>
             </div>
-            <button
-              onClick={() => router.push(`/pods/${pod.id}/edit`)}
-              className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-            >
-              Edit Pod
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => router.push(`/pods/${pod.id}/edit`)}
+                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Edit Pod
+              </button>
+            )}
           </div>
         </div>
 
@@ -324,6 +355,17 @@ export default function PodDetailPage() {
                           >
                             Edit Dates
                           </button>
+                          {session?.user?.role === "owner" && (
+                            <button
+                              onClick={() => {
+                                setMemberToDelete(member);
+                                setShowDeleteMemberModal(true);
+                              }}
+                              className="text-red-600 hover:text-red-900 text-sm font-medium ml-3"
+                            >
+                              Delete
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -334,18 +376,60 @@ export default function PodDetailPage() {
           </div>
         )}
 
+        {/* Delete Historical Member Confirmation Modal */}
+        {showDeleteMemberModal && memberToDelete && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Delete Membership Record
+              </h3>
+              <p className="text-gray-600 mb-1">
+                Are you sure you want to permanently delete the membership record for{" "}
+                <span className="font-semibold">{memberToDelete.person.name}</span>?
+              </p>
+              <p className="text-sm text-gray-500 mb-1">
+                Period: {new Date(memberToDelete.start_date).toLocaleDateString()}
+                {memberToDelete.end_date && ` – ${new Date(memberToDelete.end_date).toLocaleDateString()}`}
+              </p>
+              <p className="text-sm text-red-600 mb-4">
+                This action cannot be undone.
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setShowDeleteMemberModal(false);
+                    setMemberToDelete(null);
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteMembership}
+                  disabled={deleting}
+                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400"
+                >
+                  {deleting ? "Deleting..." : "Delete Permanently"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Current Projects */}
         <div className="bg-white rounded-lg shadow mb-6">
           <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
             <h2 className="text-xl font-semibold text-gray-900">
               Current Projects ({pod.active_projects.length})
             </h2>
-            <button
-              onClick={() => setShowAddProjectModal(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
-            >
-              + Add Project
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => setShowAddProjectModal(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+              >
+                + Add Project
+              </button>
+            )}
           </div>
           <div className="overflow-x-auto">
             {pod.active_projects.length === 0 ? (
@@ -383,17 +467,19 @@ export default function PodDetailPage() {
                         {new Date(proj.start_date).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <button
-                          onClick={() =>
-                            handleRemoveProject(
-                              proj.project.id,
-                              proj.project.name
-                            )
-                          }
-                          className="text-red-600 hover:text-red-900"
-                        >
-                          Remove
-                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={() =>
+                              handleRemoveProject(
+                                proj.project.id,
+                                proj.project.name
+                              )
+                            }
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            Remove
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -459,15 +545,17 @@ export default function PodDetailPage() {
                             : "-"}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <button
-                            onClick={() => {
-                              setProjectToEdit(proj);
-                              setShowEditProjectDatesModal(true);
-                            }}
-                            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                          >
-                            Edit Dates
-                          </button>
+                          {isAdmin && (
+                            <button
+                              onClick={() => {
+                                setProjectToEdit(proj);
+                                setShowEditProjectDatesModal(true);
+                              }}
+                              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                            >
+                              Edit Dates
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}

@@ -41,6 +41,13 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
             employee_code: true,
           },
         },
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            person: { select: { id: true, name: true } },
+          },
+        },
         members: include_members
           ? {
               where: { end_date: null }, // Active members only
@@ -155,6 +162,7 @@ export const POST = withAuth(async (req: NextRequest, { user }: { user: any }) =
         name: body.name,
         description: body.description || null,
         leader_id: body.leader_id,
+        owner_id: body.owner_id || null,
         status: body.status || "active",
       },
       include: {

@@ -9,10 +9,9 @@ const PM_ALLOWED_PATHS = [
   "/dashboard",
   "/pods",
   "/project-costs",
-  "/salaries",
   "/holidays",
   "/reports/pod-financials",
-  "/reports/profit-loss",
+  "/reports/pod-owner-financials",
   "/auth",
 ];
 

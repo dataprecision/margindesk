@@ -1,11 +1,13 @@
 import { PrismaClient } from "@prisma/client";
+import { getDescendantOwnerIds } from "@/lib/pod-owner-tree";
 
 const prisma = new PrismaClient();
 
 /**
  * Get pod IDs that a PM user can access.
  * Returns pods where the user (matched by email) is the leader,
- * or where their direct reports are leaders.
+ * or where their direct reports are leaders,
+ * or where the user is an active PodOwner (walks the owner hierarchy).
  * Returns null for owner/finance (meaning "all pods").
  */
 export async function getPodIdsForUser(
@@ -37,14 +39,42 @@ export async function getPodIdsForUser(
   const leaderIds = [person.id, ...person.direct_reports.map((r) => r.id)];
 
   // Find pods led by any of these people
-  const pods = await prisma.financialPod.findMany({
+  const leaderPods = await prisma.financialPod.findMany({
     where: {
       leader_id: { in: leaderIds },
     },
     select: { id: true },
   });
 
-  return pods.map((p) => p.id);
+  // Find pods via PodOwner hierarchy
+  const allOwners = await prisma.podOwner.findMany({
+    select: { id: true, person_id: true, parent_id: true, end_date: true },
+  });
+
+  // Find active owner nodes for this person
+  const myOwnerNodes = allOwners.filter(
+    (o) => o.person_id === person.id && o.end_date === null
+  );
+
+  let ownerPodIds: string[] = [];
+  if (myOwnerNodes.length > 0) {
+    const rootIds = myOwnerNodes.map((o) => o.id);
+    const allDescendantIds = getDescendantOwnerIds(rootIds, allOwners, true);
+
+    const ownerPods = await prisma.financialPod.findMany({
+      where: { owner_id: { in: allDescendantIds } },
+      select: { id: true },
+    });
+    ownerPodIds = ownerPods.map((p) => p.id);
+  }
+
+  // Merge and deduplicate
+  const allPodIds = new Set([
+    ...leaderPods.map((p) => p.id),
+    ...ownerPodIds,
+  ]);
+
+  return Array.from(allPodIds);
 }
 
 /**
