@@ -215,10 +215,21 @@ export const POST = withAuth(async (req: NextRequest, { user, params }: { user: 
     const totalAllocation = activeAllocations.reduce((sum, m) => sum + m.allocation_pct, 0);
     const newTotalAllocation = totalAllocation + allocation_pct;
 
-    // Warning if total allocation exceeds 100% (but don't block)
-    let warning = null;
+    // Hard reject if total active allocation would exceed 100%. Anything above
+    // means the same person-month would land on two pod cost lines, which is
+    // double counting.
     if (newTotalAllocation > 100) {
-      warning = `Total allocation for ${person.name} will be ${newTotalAllocation}% across ${activeAllocations.length + 1} pods`;
+      const breakdown = activeAllocations
+        .map((m) => `${m.pod.name} (${m.allocation_pct}%)`)
+        .join(", ");
+      return NextResponse.json(
+        {
+          error: `Total allocation for ${person.name} would be ${newTotalAllocation}% across ${activeAllocations.length + 1} pods (limit 100%). Existing active: ${breakdown || "none"}. Lower an existing allocation, end one, or reduce this new one.`,
+          current_total: totalAllocation,
+          attempted_total: newTotalAllocation,
+        },
+        { status: 400 }
+      );
     }
 
     // Create membership
@@ -257,7 +268,6 @@ export const POST = withAuth(async (req: NextRequest, { user, params }: { user: 
     return NextResponse.json({
       success: true,
       membership,
-      warning,
       message: "Member added to pod successfully",
     });
   } catch (error) {
