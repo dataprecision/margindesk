@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 
 interface PodResult {
   pod: { id: string; name: string; leader: { name: string } };
@@ -80,6 +81,9 @@ interface PodOwner {
 export default function PodOwnerFinancialsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: session } = useSession();
+  const userRole = (session?.user as any)?.role as string | undefined;
+  const canManageTargets = userRole === "owner" || userRole === "finance";
   const [owners, setOwners] = useState<PodOwner[]>([]);
   const [selectedOwnerId, setSelectedOwnerId] = useState("");
   const [startMonth, setStartMonth] = useState("");
@@ -361,7 +365,7 @@ export default function PodOwnerFinancialsPage() {
                   <div className="mt-3 text-xs text-gray-500">Notes: {report.target.notes}</div>
                 )}
               </div>
-            ) : (
+            ) : canManageTargets ? (
               <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg text-sm text-amber-900">
                 No target set for {report.owner.name} in FY{" "}
                 {report.target?.fiscal_year ?? "(this period)"}. Set one in{" "}
@@ -370,7 +374,7 @@ export default function PodOwnerFinancialsPage() {
                 </a>{" "}
                 to compare actuals against the budget.
               </div>
-            )}
+            ) : null}
 
             {/* Aggregate Summary */}
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
