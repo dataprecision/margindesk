@@ -75,8 +75,10 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
         owner: { id: ownerNode.id, name: ownerNode.name, person: ownerNode.person },
         period: { start: startMonth, end: endMonth, months: [] },
         pods: [],
+        bench: { salary_cost: 0, people_count: 0, people: [] },
         aggregate: {
-          revenue: 0, salary_costs: 0, gross_profit: 0, gross_margin_pct: 0,
+          revenue: 0, salary_costs: 0, bench_salary_cost: 0, total_salary_cost: 0,
+          gross_profit: 0, gross_margin_pct: 0,
           total_billable_hours: 0, total_working_hours: 0, overall_utilization_pct: 0,
         },
       });
@@ -246,10 +248,180 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
       };
     });
 
+    // ──────────────────────────────────────────────────────────────────────
+    // BENCH (virtual pod): per-day, bench_pct = max(0, 100 − Σ allocation_pct
+    // across the person's active memberships that day). Daily cost flows to
+    // bench. Bench attribution: each person is assigned to their nearest
+    // pod-owner-ancestor in the Person.manager_id tree, so cost lands on the
+    // closest manager who actually owns a pod.
+    // ──────────────────────────────────────────────────────────────────────
+
+    const allPodOwnersForLookup = await prisma.podOwner.findMany({
+      select: { id: true, person_id: true },
+    });
+    const podOwnerPersonIdSet = new Set(allPodOwnersForLookup.map((o) => o.person_id));
+    const descendantOwnerPersonIds = new Set(
+      allOwners.filter((o) => descendantIds.includes(o.id)).map((o) => o.person_id)
+    );
+
+    const allPersonsForBench = await prisma.person.findMany({
+      where: { OR: [{ end_date: null }, { end_date: { gte: startDate } }] },
+      select: {
+        id: true, name: true, department: true, role: true,
+        manager_id: true, start_date: true, end_date: true,
+      },
+    });
+    const personById = new Map(allPersonsForBench.map((p) => [p.id, p]));
+
+    // Walk up manager chain to the nearest pod-owner-ancestor.
+    function findBenchOwnerPersonId(personId: string): string | null {
+      let cur = personById.get(personId);
+      if (!cur) return null;
+      let next = cur.manager_id ? personById.get(cur.manager_id) : undefined;
+      while (next) {
+        if (podOwnerPersonIdSet.has(next.id)) return next.id;
+        next = next.manager_id ? personById.get(next.manager_id) : undefined;
+      }
+      return null;
+    }
+
+    // Candidates = anyone whose nearest pod-owner-ancestor is inside the viewed subtree.
+    // Exclude the pod owners themselves — they don't appear on their own bench.
+    const benchCandidates = allPersonsForBench.filter((p) => {
+      if (podOwnerPersonIdSet.has(p.id)) return false;
+      const benchOwnerPersonId = findBenchOwnerPersonId(p.id);
+      return benchOwnerPersonId !== null && descendantOwnerPersonIds.has(benchOwnerPersonId);
+    });
+
+    const candidateIds = benchCandidates.map((c) => c.id);
+
+    // All memberships for candidates (any pod, not just owner's pods) overlapping the period
+    const candidateMemberships = candidateIds.length
+      ? await prisma.podMembership.findMany({
+          where: {
+            person_id: { in: candidateIds },
+            OR: [{ end_date: null }, { end_date: { gte: startDate } }],
+            start_date: { lte: endDate },
+          },
+        })
+      : [];
+
+    // All memberships ever (any date) for computing "bench since" — small set, cheap
+    const allCandidateMembershipsEver = candidateIds.length
+      ? await prisma.podMembership.findMany({
+          where: { person_id: { in: candidateIds } },
+          select: { person_id: true, start_date: true, end_date: true },
+        })
+      : [];
+
+    const candidateSalaries = candidateIds.length
+      ? await prisma.personSalary.findMany({
+          where: {
+            person_id: { in: candidateIds },
+            month: { gte: startDate, lte: endDate },
+          },
+        })
+      : [];
+
+    let benchTotalCost = 0;
+    const benchPersonAccum = new Map<string, { bench_days_fraction: number }>();
+    const msPerDay = 24 * 60 * 60 * 1000;
+
+    for (const month of months) {
+      const monthDate = new Date(month);
+      const year = monthDate.getUTCFullYear();
+      const monthIndex = monthDate.getUTCMonth();
+      const totalDaysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+      const monthStart = new Date(Date.UTC(year, monthIndex, 1));
+      const monthEnd = new Date(Date.UTC(year, monthIndex, totalDaysInMonth));
+      const targetYearMonth = month.substring(0, 7);
+
+      for (const person of benchCandidates) {
+        const salary = candidateSalaries.find(
+          (s) => s.person_id === person.id && s.month.toISOString().substring(0, 7) === targetYearMonth
+        );
+        if (!salary) continue;
+        const monthlySalary = parseFloat(salary.total.toString());
+        if (monthlySalary <= 0) continue;
+
+        // Active window for this person within the month (joiners/exits prorated)
+        const personStart = person.start_date;
+        const personEnd = person.end_date;
+        const activeStart = personStart > monthStart ? personStart : monthStart;
+        const activeEnd = personEnd && personEnd < monthEnd ? personEnd : monthEnd;
+        if (activeStart > activeEnd) continue;
+
+        const memberships = candidateMemberships.filter((m) => m.person_id === person.id);
+        let benchDaysFraction = 0;
+        const day = new Date(activeStart);
+        while (day <= activeEnd) {
+          const activeOnDay = memberships.filter((m) => {
+            // exclude same-day memberships, mirroring the existing financial rule
+            if (m.end_date && m.start_date.getTime() === m.end_date.getTime()) return false;
+            const mEnd = m.end_date ?? new Date(8640000000000000);
+            return m.start_date <= day && day <= mEnd;
+          });
+          const placedPct = activeOnDay.reduce((sum, m) => sum + m.allocation_pct, 0);
+          const benchPct = Math.max(0, 100 - placedPct);
+          if (benchPct > 0) benchDaysFraction += benchPct / 100;
+          day.setUTCDate(day.getUTCDate() + 1);
+        }
+
+        if (benchDaysFraction > 0) {
+          const cost = (monthlySalary / totalDaysInMonth) * benchDaysFraction;
+          benchTotalCost += cost;
+          const acc = benchPersonAccum.get(person.id) ?? { bench_days_fraction: 0 };
+          acc.bench_days_fraction += benchDaysFraction;
+          benchPersonAccum.set(person.id, acc);
+        }
+      }
+    }
+
+    // bench_since: literal "first day they fell out of full placement"
+    //   - never in any pod  → Person.start_date
+    //   - has open membership → start_date of the most recent open one
+    //   - all closed → last end_date + 1 day
+    function computeBenchSince(personId: string): string {
+      const person = personById.get(personId)!;
+      const all = allCandidateMembershipsEver.filter((m) => m.person_id === personId);
+      if (all.length === 0) return person.start_date.toISOString().substring(0, 10);
+      const open = all.filter((m) => m.end_date === null);
+      if (open.length > 0) {
+        const latest = open.reduce((a, b) => (a.start_date > b.start_date ? a : b));
+        return latest.start_date.toISOString().substring(0, 10);
+      }
+      const latest = all.reduce((a, b) =>
+        (a.end_date ?? new Date(0)) > (b.end_date ?? new Date(0)) ? a : b
+      );
+      const dayAfter = new Date((latest.end_date as Date).getTime() + msPerDay);
+      return dayAfter.toISOString().substring(0, 10);
+    }
+
+    const benchPeople = Array.from(benchPersonAccum.entries())
+      .map(([personId]) => {
+        const person = personById.get(personId)!;
+        return {
+          person_id: personId,
+          name: person.name,
+          department: person.department,
+          role: person.role,
+          bench_since: computeBenchSince(personId),
+        };
+      })
+      .sort((a, b) => a.bench_since.localeCompare(b.bench_since)); // oldest first
+
+    const bench = {
+      salary_cost: benchTotalCost,
+      people_count: benchPeople.length,
+      people: benchPeople,
+    };
+
     // Aggregate
     const aggregate = {
       revenue: podResults.reduce((s, p) => s + p.revenue, 0),
       salary_costs: podResults.reduce((s, p) => s + p.salary_costs, 0),
+      bench_salary_cost: benchTotalCost,
+      total_salary_cost: podResults.reduce((s, p) => s + p.salary_costs, 0) + benchTotalCost,
       gross_profit: podResults.reduce((s, p) => s + p.gross_profit, 0),
       gross_margin_pct: 0,
       total_billable_hours: podResults.reduce((s, p) => s + p.total_billable_hours, 0),
@@ -266,6 +438,7 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
       owner: { id: ownerNode.id, name: ownerNode.name, person: ownerNode.person },
       period: { start: startMonth, end: endMonth, months },
       pods: podResults,
+      bench,
       aggregate,
     });
   } catch (error) {

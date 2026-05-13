@@ -17,13 +17,30 @@ interface PodResult {
   member_count: number;
 }
 
+interface BenchPerson {
+  person_id: string;
+  name: string;
+  department: string | null;
+  role: string | null;
+  bench_since: string; // YYYY-MM-DD
+}
+
+interface BenchResult {
+  salary_cost: number;
+  people_count: number;
+  people: BenchPerson[];
+}
+
 interface ReportData {
   owner: { id: string; name: string; person: { name: string } };
   period: { start: string; end: string; months: string[] };
   pods: PodResult[];
+  bench: BenchResult;
   aggregate: {
     revenue: number;
     salary_costs: number;
+    bench_salary_cost: number;
+    total_salary_cost: number;
     gross_profit: number;
     gross_margin_pct: number;
     total_billable_hours: number;
@@ -51,6 +68,7 @@ export default function PodOwnerFinancialsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [autoGenerate, setAutoGenerate] = useState(false);
+  const [benchExpanded, setBenchExpanded] = useState(false);
 
   useEffect(() => {
     fetchOwners();
@@ -217,8 +235,13 @@ export default function PodOwnerFinancialsPage() {
               <div className="bg-white p-6 rounded-lg shadow">
                 <div className="text-sm text-gray-600 mb-1">Salary Costs</div>
                 <div className="text-2xl font-bold text-red-600">
-                  {formatCurrency(report.aggregate.salary_costs)}
+                  {formatCurrency(report.aggregate.total_salary_cost)}
                 </div>
+                {report.aggregate.bench_salary_cost > 0 && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    Pods {formatCurrency(report.aggregate.salary_costs)} + Bench {formatCurrency(report.aggregate.bench_salary_cost)}
+                  </div>
+                )}
               </div>
               <div className="bg-white p-6 rounded-lg shadow">
                 <div className="text-sm text-gray-600 mb-1">Gross Profit</div>
@@ -323,12 +346,85 @@ export default function PodOwnerFinancialsPage() {
                           </td>
                         </tr>
                       ))}
+                      {/* Bench row — virtual pod for reportees not in any pod */}
+                      {report.bench && (
+                        <>
+                          <tr
+                            className={`bg-amber-50 hover:bg-amber-100 cursor-pointer border-t-2 border-amber-200 ${
+                              report.bench.people_count === 0 ? "opacity-60" : ""
+                            }`}
+                            onClick={() => report.bench.people_count > 0 && setBenchExpanded(!benchExpanded)}
+                            title={
+                              report.bench.people_count > 0
+                                ? "Click to see who's on bench"
+                                : "No one on bench in this period"
+                            }
+                          >
+                            <td className="px-4 py-3 font-medium" colSpan={2}>
+                              <span className="inline-flex items-center gap-2">
+                                <span className="text-amber-900">
+                                  {report.bench.people_count > 0 ? (benchExpanded ? "▼" : "▶") : "○"}
+                                </span>
+                                <span>Bench — {report.owner.name}</span>
+                                <span className="text-xs text-gray-500">(virtual)</span>
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center">{report.bench.people_count}</td>
+                            <td className="px-4 py-3 text-right text-gray-400">—</td>
+                            <td className="px-4 py-3 text-right text-red-600">
+                              {formatCurrency(report.bench.salary_cost)}
+                            </td>
+                            <td className="px-4 py-3 text-right text-gray-400">—</td>
+                            <td className="px-4 py-3 text-center text-gray-400">—</td>
+                            <td className="px-4 py-3 text-center text-gray-400">—</td>
+                            <td className="px-4 py-3 text-center text-gray-400">—</td>
+                          </tr>
+                          {benchExpanded && report.bench.people_count > 0 && (
+                            <tr className="bg-amber-25">
+                              <td colSpan={9} className="px-6 py-4 bg-amber-50/40">
+                                <div className="text-xs text-gray-600 mb-2">
+                                  These reportees had no pod allocation for part of the period. Cost shown
+                                  on the row above is the sum across all unallocated person-days, prorated
+                                  by daily allocation. Click a name to manage their pod assignment.
+                                </div>
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="text-left text-xs text-gray-600 border-b border-amber-200">
+                                      <th className="py-2 pr-4 font-semibold">Name</th>
+                                      <th className="py-2 pr-4 font-semibold">Department</th>
+                                      <th className="py-2 pr-4 font-semibold">Role</th>
+                                      <th className="py-2 pr-4 font-semibold">On bench since</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {report.bench.people.map((p) => (
+                                      <tr key={p.person_id} className="border-b border-amber-100 last:border-0">
+                                        <td className="py-2 pr-4">
+                                          <button
+                                            onClick={() => router.push(`/employees/${p.person_id}`)}
+                                            className="text-blue-600 hover:underline"
+                                          >
+                                            {p.name}
+                                          </button>
+                                        </td>
+                                        <td className="py-2 pr-4 text-gray-700">{p.department || "—"}</td>
+                                        <td className="py-2 pr-4 text-gray-700">{p.role || "—"}</td>
+                                        <td className="py-2 pr-4 text-gray-700 font-mono text-xs">{p.bench_since}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </td>
+                            </tr>
+                          )}
+                        </>
+                      )}
                     </tbody>
                     <tfoot className="bg-gray-50 font-semibold">
                       <tr>
-                        <td className="px-4 py-3" colSpan={3}>Totals</td>
+                        <td className="px-4 py-3" colSpan={3}>Totals (incl. bench)</td>
                         <td className="px-4 py-3 text-right text-green-600">{formatCurrency(report.aggregate.revenue)}</td>
-                        <td className="px-4 py-3 text-right text-red-600">{formatCurrency(report.aggregate.salary_costs)}</td>
+                        <td className="px-4 py-3 text-right text-red-600">{formatCurrency(report.aggregate.total_salary_cost)}</td>
                         <td className="px-4 py-3 text-right">{formatCurrency(report.aggregate.gross_profit)}</td>
                         <td className="px-4 py-3 text-center">{formatPercent(report.aggregate.gross_margin_pct)}</td>
                         <td className="px-4 py-3 text-center">{formatPercent(report.aggregate.overall_utilization_pct)}</td>
