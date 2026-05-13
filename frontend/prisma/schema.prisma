@@ -581,6 +581,8 @@ model User {
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
 
+  targets_set   PodOwnerTarget[]
+
   @@index([email])
   @@index([role])
   @@index([auth_provider])
@@ -624,10 +626,33 @@ model PodOwner {
   parent     PodOwner?      @relation("PodOwnerHierarchy", fields: [parent_id], references: [id])
   children   PodOwner[]     @relation("PodOwnerHierarchy")
   pods       FinancialPod[]
+  targets    PodOwnerTarget[]
 
   @@index([person_id])
   @@index([parent_id])
   @@index([end_date])
+}
+
+// Targets set per pod owner per fiscal year.
+// fiscal_year stores the YEAR THE FY STARTS IN (Indian Apr–Mar calendar),
+// so fiscal_year = 2026 means April 2026 → March 2027.
+model PodOwnerTarget {
+  id                    String   @id @default(cuid())
+  pod_owner_id          String
+  fiscal_year           Int      // FY start year, e.g., 2026 = Apr 2026 – Mar 2027
+  profitability_target  Decimal  @db.Decimal(5, 2)   // % gross margin target
+  revenue_growth_target Decimal  @db.Decimal(5, 2)   // % growth over baseline
+  baseline_revenue      Decimal  @db.Decimal(15, 2)  // ₹ — explicit prior-year revenue
+  notes                 String?
+  set_by_user_id        String?
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+
+  pod_owner             PodOwner @relation(fields: [pod_owner_id], references: [id], onDelete: Cascade)
+  set_by                User?    @relation(fields: [set_by_user_id], references: [id])
+
+  @@unique([pod_owner_id, fiscal_year])
+  @@index([fiscal_year])
 }
 
 model FinancialPod {

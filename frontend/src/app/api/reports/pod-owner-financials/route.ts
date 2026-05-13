@@ -81,6 +81,7 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
           gross_profit: 0, gross_margin_pct: 0,
           total_billable_hours: 0, total_working_hours: 0, overall_utilization_pct: 0,
         },
+        target: { target: null },
       });
     }
 
@@ -445,12 +446,81 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
     aggregate.overall_utilization_pct = aggregate.total_working_hours > 0 ? (aggregate.total_worked_hours / aggregate.total_working_hours) * 100 : 0;
     aggregate.overall_billability_pct = aggregate.total_working_hours > 0 ? (aggregate.total_billable_hours / aggregate.total_working_hours) * 100 : 0;
 
+    // ────────────────────────────────────────────────────────────────────────
+    // TARGET vs ACTUAL
+    //
+    // The configured target is annual and stored on PodOwnerTarget keyed by
+    // (owner_id, fiscal_year). fiscal_year = FY start year (Apr–Mar convention).
+    //
+    // If the user picked a sub-period (e.g., Apr–Jul), we compare against a
+    // *proportional* slice of the annual baseline:
+    //     proportional_baseline = baseline_revenue × (months_in_period / 12)
+    //     proportional_target_revenue = proportional_baseline × (1 + growth_pct/100)
+    //
+    // Profitability target is a margin, so we just compare gross_margin_pct
+    // directly — no proportional math needed.
+    //
+    // If the selected period spans multiple fiscal years, we don't fudge a
+    // weighted blend — we pick the FY of the start month and surface a flag
+    // so the UI can warn. Single-FY selections are the common case.
+    // ────────────────────────────────────────────────────────────────────────
+
+    const startMonthDate = new Date(startMonth + "T00:00:00.000Z");
+    const startFY = startMonthDate.getUTCMonth() >= 3
+      ? startMonthDate.getUTCFullYear()
+      : startMonthDate.getUTCFullYear() - 1;
+    const endFY = endDateOriginal.getUTCMonth() >= 3
+      ? endDateOriginal.getUTCFullYear()
+      : endDateOriginal.getUTCFullYear() - 1;
+    const spansMultipleFY = startFY !== endFY;
+
+    const target = await prisma.podOwnerTarget.findUnique({
+      where: { pod_owner_id_fiscal_year: { pod_owner_id: ownerNode.id, fiscal_year: startFY } },
+    });
+
+    const monthsInPeriod = months.length;
+    const periodFraction = monthsInPeriod / 12;
+
+    const targetBlock = target
+      ? (() => {
+          const baseline = parseFloat(target.baseline_revenue.toString());
+          const growthPct = parseFloat(target.revenue_growth_target.toString());
+          const profitabilityPct = parseFloat(target.profitability_target.toString());
+          const proportionalBaseline = baseline * periodFraction;
+          const proportionalTargetRevenue = proportionalBaseline * (1 + growthPct / 100);
+
+          // Revenue growth actual = (actual_period_revenue / proportional_baseline − 1) × 100
+          const actualGrowthPct = proportionalBaseline > 0
+            ? (aggregate.revenue / proportionalBaseline - 1) * 100
+            : null;
+
+          return {
+            fiscal_year: target.fiscal_year,
+            fiscal_year_label: `FY ${target.fiscal_year} (Apr ${target.fiscal_year} – Mar ${target.fiscal_year + 1})`,
+            months_in_period: monthsInPeriod,
+            spans_multiple_fy: spansMultipleFY,
+            profitability_target_pct: profitabilityPct,
+            profitability_actual_pct: aggregate.gross_margin_pct,
+            profitability_delta_pp: aggregate.gross_margin_pct - profitabilityPct,
+            revenue_growth_target_pct: growthPct,
+            baseline_revenue: baseline,
+            proportional_baseline_revenue: proportionalBaseline,
+            proportional_target_revenue: proportionalTargetRevenue,
+            actual_revenue: aggregate.revenue,
+            actual_growth_pct: actualGrowthPct,
+            growth_delta_pp: actualGrowthPct !== null ? actualGrowthPct - growthPct : null,
+            notes: target.notes,
+          };
+        })()
+      : { fiscal_year: startFY, spans_multiple_fy: spansMultipleFY, target: null };
+
     return NextResponse.json({
       owner: { id: ownerNode.id, name: ownerNode.name, person: ownerNode.person },
       period: { start: startMonth, end: endMonth, months },
       pods: podResults,
       bench,
       aggregate,
+      target: targetBlock,
     });
   } catch (error) {
     console.error("Error generating pod owner financial report:", error);

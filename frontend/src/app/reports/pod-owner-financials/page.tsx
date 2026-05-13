@@ -31,6 +31,25 @@ interface BenchResult {
   people: BenchPerson[];
 }
 
+interface TargetVsActual {
+  fiscal_year: number;
+  fiscal_year_label?: string;
+  months_in_period?: number;
+  spans_multiple_fy?: boolean;
+  profitability_target_pct?: number;
+  profitability_actual_pct?: number;
+  profitability_delta_pp?: number;
+  revenue_growth_target_pct?: number;
+  baseline_revenue?: number;
+  proportional_baseline_revenue?: number;
+  proportional_target_revenue?: number;
+  actual_revenue?: number;
+  actual_growth_pct?: number | null;
+  growth_delta_pp?: number | null;
+  notes?: string | null;
+  target?: null; // present when no target is set for this FY
+}
+
 interface ReportData {
   owner: { id: string; name: string; person: { name: string } };
   period: { start: string; end: string; months: string[] };
@@ -49,6 +68,7 @@ interface ReportData {
     overall_utilization_pct: number;
     overall_billability_pct: number;
   };
+  target?: TargetVsActual;
 }
 
 interface PodOwner {
@@ -263,6 +283,95 @@ export default function PodOwnerFinancialsPage() {
 
         {report && (
           <div className="space-y-6">
+            {/* Target vs Actual */}
+            {report.target && report.target.profitability_target_pct !== undefined ? (
+              <div className="bg-white p-6 rounded-lg shadow">
+                <div className="flex items-baseline justify-between mb-4">
+                  <h2 className="text-xl font-bold text-gray-900">Target vs Actual</h2>
+                  <span className="text-sm text-gray-500">
+                    {report.target.fiscal_year_label} · {report.target.months_in_period} month
+                    {report.target.months_in_period === 1 ? "" : "s"} in view
+                  </span>
+                </div>
+                {report.target.spans_multiple_fy && (
+                  <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
+                    Period crosses fiscal-year boundary — comparison uses the target for FY{" "}
+                    {report.target.fiscal_year}.
+                  </div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Profitability */}
+                  <div className="p-4 rounded border border-gray-200">
+                    <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">
+                      Profitability (gross margin)
+                    </div>
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-2xl font-bold text-gray-900">
+                        {formatPercent(report.target.profitability_actual_pct!)}
+                      </span>
+                      <span className="text-sm text-gray-600">
+                        Target {formatPercent(report.target.profitability_target_pct)}
+                      </span>
+                    </div>
+                    <div
+                      className={`text-sm mt-1 ${
+                        report.target.profitability_delta_pp! >= 0 ? "text-green-700" : "text-red-700"
+                      }`}
+                    >
+                      {report.target.profitability_delta_pp! >= 0 ? "▲" : "▼"}{" "}
+                      {Math.abs(report.target.profitability_delta_pp!).toFixed(1)} pp{" "}
+                      {report.target.profitability_delta_pp! >= 0 ? "above" : "below"} target
+                    </div>
+                  </div>
+                  {/* Revenue growth */}
+                  <div className="p-4 rounded border border-gray-200">
+                    <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">
+                      Revenue growth vs prior year
+                    </div>
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-2xl font-bold text-gray-900">
+                        {report.target.actual_growth_pct !== null && report.target.actual_growth_pct !== undefined
+                          ? formatPercent(report.target.actual_growth_pct)
+                          : "—"}
+                      </span>
+                      <span className="text-sm text-gray-600">
+                        Target {formatPercent(report.target.revenue_growth_target_pct!)}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      Period revenue {formatCurrency(report.target.actual_revenue!)} vs proportional
+                      baseline {formatCurrency(report.target.proportional_baseline_revenue!)} (annual{" "}
+                      {formatCurrency(report.target.baseline_revenue!)} × {report.target.months_in_period}
+                      /12)
+                    </div>
+                    {report.target.growth_delta_pp !== null && report.target.growth_delta_pp !== undefined && (
+                      <div
+                        className={`text-sm mt-1 ${
+                          report.target.growth_delta_pp >= 0 ? "text-green-700" : "text-red-700"
+                        }`}
+                      >
+                        {report.target.growth_delta_pp >= 0 ? "▲" : "▼"}{" "}
+                        {Math.abs(report.target.growth_delta_pp).toFixed(1)} pp{" "}
+                        {report.target.growth_delta_pp >= 0 ? "above" : "below"} target
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {report.target.notes && (
+                  <div className="mt-3 text-xs text-gray-500">Notes: {report.target.notes}</div>
+                )}
+              </div>
+            ) : (
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg text-sm text-amber-900">
+                No target set for {report.owner.name} in FY{" "}
+                {report.target?.fiscal_year ?? "(this period)"}. Set one in{" "}
+                <a href="/settings/pod-owner-targets" className="underline">
+                  Settings → Pod Owner Targets
+                </a>{" "}
+                to compare actuals against the budget.
+              </div>
+            )}
+
             {/* Aggregate Summary */}
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <div className="bg-white p-6 rounded-lg shadow">
