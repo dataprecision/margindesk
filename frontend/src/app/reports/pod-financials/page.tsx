@@ -337,11 +337,17 @@ export default function PodFinancialsReportPage() {
                   <div className="text-lg font-semibold text-blue-600">
                     {report.utilization.summary.total_billable_hours.toFixed(1)}
                   </div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    Billability: {formatPercent(report.utilization.summary.overall_billability_pct)}
+                  </div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-600">Worked Hours</div>
                   <div className="text-lg font-semibold text-green-600">
                     {report.utilization.summary.total_worked_hours.toFixed(1)}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    Utilization: {formatPercent(report.utilization.summary.overall_utilization_pct)}
                   </div>
                 </div>
                 <div>
@@ -349,11 +355,21 @@ export default function PodFinancialsReportPage() {
                   <div className="text-lg font-semibold text-gray-600">
                     {report.utilization.summary.total_working_hours.toFixed(1)}
                   </div>
+                  <div className="text-xs text-gray-500 mt-0.5">&nbsp;</div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-600">Unutilized Hours</div>
                   <div className="text-lg font-semibold text-red-600">
                     {report.utilization.summary.total_unutilized_hours.toFixed(1)}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {report.utilization.summary.total_working_hours > 0
+                      ? formatPercent(
+                          (report.utilization.summary.total_unutilized_hours /
+                            report.utilization.summary.total_working_hours) * 100
+                        )
+                      : "—"}{" "}
+                    of capacity
                   </div>
                 </div>
               </div>

@@ -70,6 +70,45 @@ export default function PodOwnerFinancialsPage() {
   const [autoGenerate, setAutoGenerate] = useState(false);
   const [benchExpanded, setBenchExpanded] = useState(false);
 
+  // Sort state for the per-pod breakdown table. First click on a column sorts
+  // it descending (high → low); clicking the same column toggles to ascending.
+  type SortField =
+    | "name" | "leader" | "member_count" | "revenue" | "salary_costs"
+    | "gross_profit" | "gross_margin_pct" | "utilization_pct" | "billability_pct";
+  const [sortField, setSortField] = useState<SortField>("salary_costs");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const setSort = (field: SortField) => {
+    if (field === sortField) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir("desc");
+    }
+  };
+
+  const sortedPods = report
+    ? [...report.pods].sort((a, b) => {
+        let av: string | number;
+        let bv: string | number;
+        if (sortField === "name") {
+          av = a.pod.name.toLowerCase(); bv = b.pod.name.toLowerCase();
+        } else if (sortField === "leader") {
+          av = (a.pod.leader?.name || "").toLowerCase();
+          bv = (b.pod.leader?.name || "").toLowerCase();
+        } else {
+          av = (a as any)[sortField] as number;
+          bv = (b as any)[sortField] as number;
+        }
+        if (av < bv) return sortDir === "asc" ? -1 : 1;
+        if (av > bv) return sortDir === "asc" ? 1 : -1;
+        return 0;
+      })
+    : [];
+
+  const sortArrow = (field: SortField) =>
+    field === sortField ? (sortDir === "asc" ? " ↑" : " ↓") : "";
+
   useEffect(() => {
     fetchOwners();
 
@@ -278,19 +317,55 @@ export default function PodOwnerFinancialsPage() {
                   <table className="w-full">
                     <thead className="bg-gray-100">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Pod</th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Leader</th>
-                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Members</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Revenue</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Salary Costs</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Gross Profit</th>
-                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Margin</th>
-                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Utilization</th>
-                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Billability</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                          <button onClick={() => setSort("name")} className="hover:text-blue-600">
+                            Pod{sortArrow("name")}
+                          </button>
+                        </th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                          <button onClick={() => setSort("leader")} className="hover:text-blue-600">
+                            Leader{sortArrow("leader")}
+                          </button>
+                        </th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">
+                          <button onClick={() => setSort("member_count")} className="hover:text-blue-600">
+                            Members{sortArrow("member_count")}
+                          </button>
+                        </th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">
+                          <button onClick={() => setSort("revenue")} className="hover:text-blue-600">
+                            Revenue{sortArrow("revenue")}
+                          </button>
+                        </th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">
+                          <button onClick={() => setSort("salary_costs")} className="hover:text-blue-600">
+                            Salary Costs{sortArrow("salary_costs")}
+                          </button>
+                        </th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">
+                          <button onClick={() => setSort("gross_profit")} className="hover:text-blue-600">
+                            Gross Profit{sortArrow("gross_profit")}
+                          </button>
+                        </th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">
+                          <button onClick={() => setSort("gross_margin_pct")} className="hover:text-blue-600">
+                            Margin{sortArrow("gross_margin_pct")}
+                          </button>
+                        </th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">
+                          <button onClick={() => setSort("utilization_pct")} className="hover:text-blue-600">
+                            Utilization{sortArrow("utilization_pct")}
+                          </button>
+                        </th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">
+                          <button onClick={() => setSort("billability_pct")} className="hover:text-blue-600">
+                            Billability{sortArrow("billability_pct")}
+                          </button>
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {report.pods.map((pod) => (
+                      {sortedPods.map((pod) => (
                         <tr key={pod.pod.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3 font-medium">
                             <button
