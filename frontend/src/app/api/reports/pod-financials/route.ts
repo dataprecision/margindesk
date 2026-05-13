@@ -62,6 +62,16 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
     // Add 1 day to endDate to make it inclusive for queries (e.g., Sep 1 to Sep 30 means Sep 1 00:00 to Oct 1 00:00)
     endDate.setUTCDate(endDate.getUTCDate() + 1);
 
+    // ProjectCost.period_month is stored as YYYY-MM-01 (month-start), so an
+    // inclusive month range must compare against the FIRST day of the last
+    // selected month — using endDate (= next month's 1st) would pull in the
+    // following month's row and double-count revenue.
+    const periodMonthEnd = new Date(Date.UTC(
+      endDateOriginal.getUTCFullYear(),
+      endDateOriginal.getUTCMonth(),
+      1
+    ));
+
     // Get pod with projects and members
     const pod = await prisma.financialPod.findUnique({
       where: { id: podId },
@@ -83,12 +93,12 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
                 client: { select: { id: true, name: true } },
                 project_costs: {
                   where: {
-                    period_month: { gte: startDate, lte: endDate },
+                    period_month: { gte: startDate, lte: periodMonthEnd },
                   },
                 },
                 allocations: {
                   where: {
-                    period_month: { gte: startDate, lte: endDate },
+                    period_month: { gte: startDate, lte: periodMonthEnd },
                   },
                   include: {
                     person: {
@@ -142,10 +152,12 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
       holidays.map((h) => h.date.toISOString().split("T")[0])
     );
 
-    // Calculate months in range
+    // Calculate months in range. Iterate against periodMonthEnd (first day of
+    // the last selected month) — using endDate (= next month's 1st) would push
+    // an extra month onto the array and render an empty row in the UI.
     const months: string[] = [];
     const current = new Date(startDate);
-    while (current <= endDate) {
+    while (current <= periodMonthEnd) {
       months.push(current.toISOString().substring(0, 10));
       current.setMonth(current.getMonth() + 1);
     }
@@ -197,7 +209,7 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
     const allAllocations = await prisma.allocation.findMany({
       where: {
         person_id: { in: memberIds },
-        period_month: { gte: startDate, lte: endDate },
+        period_month: { gte: startDate, lte: periodMonthEnd },
       },
       include: {
         person: {
@@ -403,7 +415,7 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
     const overheadByMonth: Record<string, number> = {};
     const overheadPolicies = await prisma.overheadPolicy.findMany({
       where: {
-        period_month: { gte: startDate, lte: endDate },
+        period_month: { gte: startDate, lte: periodMonthEnd },
       },
     });
 

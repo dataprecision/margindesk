@@ -91,11 +91,22 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
     const endDateOriginal = new Date(endMonth + "T00:00:00.000Z");
     const endDate = new Date(endMonth + "T00:00:00.000Z");
     endDate.setUTCDate(endDate.getUTCDate() + 1);
+    // ProjectCost.period_month is stored as YYYY-MM-01 (month-start). For an
+    // inclusive month range, compare against the first day of the LAST selected
+    // month — using endDate (= next month's 1st) would include the following
+    // month's revenue rows and double-count.
+    const periodMonthEnd = new Date(Date.UTC(
+      endDateOriginal.getUTCFullYear(),
+      endDateOriginal.getUTCMonth(),
+      1
+    ));
 
-    // Build months array
+    // Build months array. Iterate against periodMonthEnd (first day of the last
+    // selected month) — using endDate (= next month's 1st) would push an extra
+    // month onto the array.
     const months: string[] = [];
     const cur = new Date(startDate);
-    while (cur <= endDate) {
+    while (cur <= periodMonthEnd) {
       months.push(cur.toISOString().substring(0, 10));
       cur.setMonth(cur.getMonth() + 1);
     }
@@ -131,7 +142,7 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
           include: {
             client: { select: { name: true } },
             project_costs: {
-              where: { period_month: { gte: startDate, lte: endDate } },
+              where: { period_month: { gte: startDate, lte: periodMonthEnd } },
             },
           },
         },
