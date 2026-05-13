@@ -1,16 +1,25 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { withAuth } from "@/lib/auth/protect-route";
+import { getPersonIdsForUser, getProjectIdsForUser } from "@/lib/auth/pod-scope";
 
 const prisma = new PrismaClient();
 
 /**
  * GET /api/allocations
- * List all allocations (manager resource planning)
+ * List allocations. PMs are scoped to their pod members and projects.
  */
 export const GET = withAuth(async (req, { user }) => {
   try {
+    const allowedPersonIds = await getPersonIdsForUser(user.email, user.role);
+    const allowedProjectIds = await getProjectIdsForUser(user.email, user.role);
+
+    const where: any = {};
+    if (allowedPersonIds !== null) where.person_id = { in: allowedPersonIds };
+    if (allowedProjectIds !== null) where.project_id = { in: allowedProjectIds };
+
     const allocations = await prisma.allocation.findMany({
+      where,
       include: {
         person: {
           select: {
@@ -97,6 +106,16 @@ export const POST = withAuth(async (req, { user }) => {
         { error: "Project not found" },
         { status: 404 }
       );
+    }
+
+    // PM scope check: person and project must be in the user's pods
+    const allowedPersonIds = await getPersonIdsForUser(user.email, user.role);
+    const allowedProjectIds = await getProjectIdsForUser(user.email, user.role);
+    if (
+      (allowedPersonIds !== null && !allowedPersonIds.includes(body.person_id)) ||
+      (allowedProjectIds !== null && !allowedProjectIds.includes(body.project_id))
+    ) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Validate allocation percentage

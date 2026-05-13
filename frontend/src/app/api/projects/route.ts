@@ -68,6 +68,10 @@ export const GET = withAuth(async (req, { user }) => {
  */
 export const POST = withAuth(async (req, { user }) => {
   try {
+    if (user.role !== "owner" && user.role !== "finance") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const body = await req.json();
 
     // Validate required fields

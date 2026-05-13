@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
-import { withAuth } from "@/lib/auth/protect-route";
+import { withAdminRole } from "@/lib/auth/protect-route";
 
 const prisma = new PrismaClient();
 
@@ -8,7 +8,7 @@ const prisma = new PrismaClient();
  * PATCH /api/bills/:id
  * Update a bill (toggle include_in_calculation or update fields)
  */
-export const PATCH = withAuth(async (req, { user, params }) => {
+export const PATCH = withAdminRole(async (req, { user, params }) => {
   try {
     const { id } = await params;
     const body = await req.json();
@@ -32,7 +32,7 @@ export const PATCH = withAuth(async (req, { user, params }) => {
  * DELETE /api/bills/:id
  * Delete a bill
  */
-export const DELETE = withAuth(async (req, { user, params }) => {
+export const DELETE = withAdminRole(async (req, { user, params }) => {
   try {
     const { id } = await params;
 

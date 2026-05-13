@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
-import { withAuth } from "@/lib/auth/protect-route";
+import { withAdminRole } from "@/lib/auth/protect-route";
 
 const prisma = new PrismaClient();
 
@@ -9,7 +9,7 @@ const prisma = new PrismaClient();
  * Get allocation status for a bill
  * Shows how much of the bill is allocated to reselling invoices
  */
-export const GET = withAuth(async (req, { user, params }) => {
+export const GET = withAdminRole(async (req, { user, params }) => {
   try {
     const { id: billId } = params;
 

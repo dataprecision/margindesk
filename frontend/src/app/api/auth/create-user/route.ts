@@ -1,19 +1,17 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { withRole } from "@/lib/auth/protect-route";
 
 const prisma = new PrismaClient();
 
 /**
  * POST /api/auth/create-user
- * Create a new user with email/password (for initial setup)
- *
- * IMPORTANT: This endpoint should be protected in production!
- * Consider adding an API key or disabling after initial setup.
+ * Create a new user with email/password. Owner only.
  */
-export async function POST(req: Request) {
+export const POST = withRole(["owner"], async (req: Request) => {
   try {
-    const { email, password, name, role = "owner" } = await req.json();
+    const { email, password, name, role = "readonly" } = await req.json();
 
     // Validate input
     if (!email || !password) {
@@ -77,4 +75,4 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-}
+});

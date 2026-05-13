@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
-import { withAuth } from "@/lib/auth/protect-route";
+import { withAdminRole } from "@/lib/auth/protect-route";
 
 const prisma = new PrismaClient();
 
@@ -18,7 +18,7 @@ const prisma = new PrismaClient();
  * - category: Filter by cf_expense_category
  * - search: Search in vendor_name, bill_number
  */
-export const GET = withAuth(async (req, { user }) => {
+export const GET = withAdminRole(async (req, { user }) => {
   try {
     const { searchParams } = new URL(req.url);
 

@@ -72,6 +72,10 @@ export const GET = withAuth(async (req, { user, params }) => {
  */
 export const PATCH = withAuth(async (req, { user, params }) => {
   try {
+    if (user.role !== "owner" && user.role !== "finance") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { id} = await params;
     const body = await req.json();
 

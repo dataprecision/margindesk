@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
-import { withAuth } from "@/lib/auth/protect-route";
+import { withAdminRole } from "@/lib/auth/protect-route";
 import { getZohoAccessToken } from "@/lib/zoho/token-manager";
 
 const prisma = new PrismaClient();
@@ -9,7 +9,7 @@ const prisma = new PrismaClient();
  * POST /api/bills/[id]/details
  * Fetch and sync details for a single bill
  */
-export const POST = withAuth(async (req, { user, params }) => {
+export const POST = withAdminRole(async (req, { user, params }) => {
   try {
     const { id } = await params;
 
@@ -145,7 +145,7 @@ export const POST = withAuth(async (req, { user, params }) => {
  * DELETE /api/bills/[id]/details
  * Delete bill details (line items) for a single bill
  */
-export const DELETE = withAuth(async (req, { user, params }) => {
+export const DELETE = withAdminRole(async (req, { user, params }) => {
   try {
     const { id } = await params;
 

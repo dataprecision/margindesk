@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
-import { withAuth } from "@/lib/auth/protect-route";
+import { withAdminRole } from "@/lib/auth/protect-route";
 
 const prisma = new PrismaClient();
 
@@ -8,7 +8,7 @@ const prisma = new PrismaClient();
  * PATCH /api/expenses/:id
  * Update expense inclusion status and exclusion reason
  */
-export const PATCH = withAuth(async (req, { user, params }) => {
+export const PATCH = withAdminRole(async (req, { user, params }) => {
   try {
     const { id } = await params;
     const body = await req.json();

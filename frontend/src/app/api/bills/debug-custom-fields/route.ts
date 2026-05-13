@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { withAuth } from "@/lib/auth/protect-route";
+import { withAdminRole } from "@/lib/auth/protect-route";
 import { getZohoAccessToken } from "@/lib/zoho/token-manager";
 
 /**
  * GET /api/bills/debug-custom-fields
  * Debug endpoint to check custom fields structure from Zoho Books
  */
-export const GET = withAuth(async (req, { user }) => {
+export const GET = withAdminRole(async (req, { user }) => {
   try {
     console.log("🔍 [Debug Custom Fields] Fetching sample bill from Zoho Books...");
 

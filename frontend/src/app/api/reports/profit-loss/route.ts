@@ -19,6 +19,10 @@ const prisma = new PrismaClient();
  */
 export const GET = withAuth(async (req, { user }) => {
   try {
+    if (user.role !== "owner" && user.role !== "finance") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const month = searchParams.get("month");
 

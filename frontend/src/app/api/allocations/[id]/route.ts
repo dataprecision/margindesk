@@ -1,12 +1,21 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { withAuth } from "@/lib/auth/protect-route";
+import { getPersonIdsForUser, getProjectIdsForUser } from "@/lib/auth/pod-scope";
 
 const prisma = new PrismaClient();
 
+async function assertPMScope(allocation: { person_id: string; project_id: string }, user: any) {
+  const allowedPersonIds = await getPersonIdsForUser(user.email, user.role);
+  const allowedProjectIds = await getProjectIdsForUser(user.email, user.role);
+  if (allowedPersonIds !== null && !allowedPersonIds.includes(allocation.person_id)) return false;
+  if (allowedProjectIds !== null && !allowedProjectIds.includes(allocation.project_id)) return false;
+  return true;
+}
+
 /**
  * GET /api/allocations/[id]
- * Get a single allocation by ID
+ * Get a single allocation by ID. PMs are scoped to their pod members and projects.
  */
 export const GET = withAuth(async (req, { user, params }) => {
   try {
@@ -29,6 +38,10 @@ export const GET = withAuth(async (req, { user, params }) => {
         { error: "Allocation not found" },
         { status: 404 }
       );
+    }
+
+    if (!(await assertPMScope(allocation, user))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     return NextResponse.json(allocation);
@@ -68,6 +81,10 @@ export const PUT = withAuth(async (req, { user, params }) => {
         { error: "Allocation not found" },
         { status: 404 }
       );
+    }
+
+    if (!(await assertPMScope(currentAllocation, user))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Validate allocation percentage if provided
@@ -157,6 +174,10 @@ export const DELETE = withAuth(async (req, { user, params }) => {
         { error: "Allocation not found" },
         { status: 404 }
       );
+    }
+
+    if (!(await assertPMScope(currentAllocation, user))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     await prisma.allocation.delete({
