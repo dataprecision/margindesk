@@ -47,6 +47,7 @@ model Project {
   client             Client              @relation(fields: [client_id], references: [id])
   config             ProjectConfig?
   project_costs      ProjectCost[]
+  project_hours      ProjectHours[]
   reselling_invoices ResellingInvoice[]
   timesheet_entries  TimesheetEntry[]
 
@@ -263,6 +264,22 @@ model ProjectCost {
   project      Project         @relation(fields: [project_id], references: [id])
 
   @@unique([project_id, period_month, type])
+  @@index([project_id, period_month])
+}
+
+// Contracted (planned) project hours per month — set by owner/finance/pm.
+// Independent of timesheets; used for utilization, sold-capacity, and effective-rate reports.
+model ProjectHours {
+  id           String   @id @default(cuid())
+  project_id   String
+  period_month DateTime
+  hours        Decimal  @db.Decimal(8, 2)
+  notes        String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+  project      Project  @relation(fields: [project_id], references: [id])
+
+  @@unique([project_id, period_month])
   @@index([project_id, period_month])
 }
 

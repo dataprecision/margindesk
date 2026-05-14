@@ -40,6 +40,7 @@ export default function Sidebar() {
     { href: "/employees", label: "People", icon: "👤", pmVisible: false },
     { href: "/pods", label: "Pods", icon: "🎯", pmVisible: true },
     { href: "/project-costs", label: "Project Costs", icon: "💰", pmVisible: true },
+    { href: "/project-hours", label: "Project Hours", icon: "⏱️", pmVisible: true },
     { href: "/expenses", label: "Expenses", icon: "💳", pmVisible: false },
     { href: "/bills", label: "Bills", icon: "📄", pmVisible: false },
     { href: "/holidays", label: "Holidays", icon: "🎄", pmVisible: true },

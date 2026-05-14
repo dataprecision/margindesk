@@ -453,6 +453,36 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
       }
     }
 
+    // Contracted project hours (ProjectHours) — for utilization / sold-capacity / effective-rate reports.
+    const contractedHoursRows = podProjectIds.length
+      ? await prisma.projectHours.findMany({
+          where: {
+            project_id: { in: podProjectIds },
+            period_month: { gte: startDate, lte: periodMonthEnd },
+          },
+        })
+      : [];
+    const contractedByProject: Record<string, number> = {};
+    const contractedByMonth: Record<string, number> = {};
+    let totalContractedHours = 0;
+    for (const row of contractedHoursRows) {
+      const h = parseFloat(row.hours.toString());
+      totalContractedHours += h;
+      contractedByProject[row.project_id] =
+        (contractedByProject[row.project_id] ?? 0) + h;
+      const monthIso = row.period_month.toISOString().substring(0, 10);
+      contractedByMonth[monthIso] = (contractedByMonth[monthIso] ?? 0) + h;
+    }
+
+    // Logged (billable) hours by project — aggregated from member project breakdowns
+    const loggedHoursByProject: Record<string, number> = {};
+    Object.values(utilizationByMember).forEach((m: any) => {
+      Object.entries(m.projects || {}).forEach(([projectId, info]: [string, any]) => {
+        loggedHoursByProject[projectId] =
+          (loggedHoursByProject[projectId] ?? 0) + (info?.hours ?? 0);
+      });
+    });
+
     // Calculate totals
     const totalRevenue = Object.values(revenueByMonth).reduce((sum, val) => sum + val, 0);
     const grossProfit = totalRevenue - totalSalaryCosts - totalDirectExpenses;
@@ -516,6 +546,12 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
           direct_expenses: totalDirectExpenses,
           direct_expenses_by_project: directExpensesByProject,
           direct_expenses_by_month: directExpensesByMonth,
+        },
+        contracted_hours: {
+          total: totalContractedHours,
+          by_project: contractedByProject,
+          by_month: contractedByMonth,
+          logged_by_project: loggedHoursByProject,
         },
         gross_profit: {
           amount: grossProfit,

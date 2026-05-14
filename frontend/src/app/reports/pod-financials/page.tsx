@@ -30,6 +30,12 @@ interface PodReport {
       direct_expenses_by_project: Record<string, number>;
       direct_expenses_by_month: Record<string, number>;
     };
+    contracted_hours?: {
+      total: number;
+      by_project: Record<string, number>;
+      by_month: Record<string, number>;
+      logged_by_project: Record<string, number>;
+    };
     gross_profit: {
       amount: number;
       margin_pct: number;
@@ -309,16 +315,123 @@ export default function PodFinancialsReportPage() {
               <div className="space-y-4">
                 <div>
                   <h3 className="font-semibold text-gray-700 mb-2">By Project</h3>
-                  <div className="space-y-2">
-                    {Object.entries(report.financials.revenue.by_project).map(([id, proj]) => (
-                      <div key={id} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                        <div>
-                          <div className="font-medium">{proj.name}</div>
-                          <div className="text-sm text-gray-600">{proj.client}</div>
-                        </div>
-                        <div className="font-semibold text-green-600">{formatCurrency(proj.total)}</div>
-                      </div>
-                    ))}
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50 text-left text-xs text-gray-600 uppercase">
+                        <tr>
+                          <th className="px-3 py-2">Project</th>
+                          <th className="px-3 py-2 text-right">Revenue</th>
+                          <th
+                            className="px-3 py-2 text-right"
+                            title="Sum of contracted hours from /project-hours for the selected period"
+                          >
+                            Contracted Hrs
+                          </th>
+                          <th
+                            className="px-3 py-2 text-right"
+                            title="Billable hours logged via timesheets in the selected period"
+                          >
+                            Logged Hrs
+                          </th>
+                          <th
+                            className="px-3 py-2 text-right"
+                            title="logged / contracted. >120% suggests scope creep; <80% suggests under-delivery."
+                          >
+                            Δ %
+                          </th>
+                          <th
+                            className="px-3 py-2 text-right"
+                            title="Revenue / Contracted Hrs — what the client actually pays per hour bought"
+                          >
+                            Eff. Rate
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {Object.entries(report.financials.revenue.by_project).map(([id, proj]) => {
+                          const contracted =
+                            report.financials.contracted_hours?.by_project[id] ?? 0;
+                          const logged =
+                            report.financials.contracted_hours?.logged_by_project[id] ?? 0;
+                          const deltaPct =
+                            contracted > 0 ? (logged / contracted) * 100 : null;
+                          const effRate =
+                            contracted > 0 ? proj.total / contracted : null;
+                          const deltaClass =
+                            deltaPct === null
+                              ? "text-gray-400"
+                              : deltaPct > 120
+                                ? "text-red-600 font-semibold"
+                                : deltaPct < 80
+                                  ? "text-orange-600"
+                                  : "text-gray-700";
+                          return (
+                            <tr key={id} className="hover:bg-gray-50">
+                              <td className="px-3 py-2">
+                                <div className="font-medium">{proj.name}</div>
+                                <div className="text-xs text-gray-500">{proj.client}</div>
+                              </td>
+                              <td className="px-3 py-2 text-right font-semibold text-green-600">
+                                {formatCurrency(proj.total)}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {contracted > 0 ? contracted.toFixed(1) : "—"}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {logged > 0 ? logged.toFixed(1) : "—"}
+                              </td>
+                              <td className={`px-3 py-2 text-right ${deltaClass}`}>
+                                {deltaPct === null ? "—" : `${deltaPct.toFixed(0)}%`}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {effRate === null
+                                  ? "—"
+                                  : `₹${effRate.toLocaleString("en-IN", { maximumFractionDigits: 0 })}/hr`}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      {report.financials.contracted_hours && (
+                        <tfoot className="bg-gray-50 text-xs">
+                          <tr className="font-semibold">
+                            <td className="px-3 py-2">Total</td>
+                            <td className="px-3 py-2 text-right text-green-600">
+                              {formatCurrency(report.financials.revenue.total)}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {report.financials.contracted_hours.total.toFixed(1)}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {Object.values(
+                                report.financials.contracted_hours.logged_by_project
+                              )
+                                .reduce((s, v) => s + v, 0)
+                                .toFixed(1)}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {report.financials.contracted_hours.total > 0
+                                ? `${(
+                                    (Object.values(
+                                      report.financials.contracted_hours.logged_by_project
+                                    ).reduce((s, v) => s + v, 0) /
+                                      report.financials.contracted_hours.total) *
+                                    100
+                                  ).toFixed(0)}%`
+                                : "—"}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {report.financials.contracted_hours.total > 0
+                                ? `₹${(
+                                    report.financials.revenue.total /
+                                    report.financials.contracted_hours.total
+                                  ).toLocaleString("en-IN", { maximumFractionDigits: 0 })}/hr`
+                                : "—"}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
                   </div>
                 </div>
 

@@ -203,6 +203,27 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
       directExpenseByProject.set(li.project_id, (directExpenseByProject.get(li.project_id) ?? 0) + amt);
     }
 
+    // Contracted hours (ProjectHours) across all projects in scope — used for
+    // sold-capacity % and effective-rate columns. Same monthly semantics as
+    // ProjectCost (period_month stored as YYYY-MM-01), so compare against periodMonthEnd.
+    const contractedHoursRows = allProjectIdsInPods.length
+      ? await prisma.projectHours.findMany({
+          where: {
+            project_id: { in: allProjectIdsInPods },
+            period_month: { gte: startDate, lte: periodMonthEnd },
+          },
+          select: { project_id: true, hours: true },
+        })
+      : [];
+    const contractedHoursByProject = new Map<string, number>();
+    for (const row of contractedHoursRows) {
+      const h = parseFloat(row.hours.toString());
+      contractedHoursByProject.set(
+        row.project_id,
+        (contractedHoursByProject.get(row.project_id) ?? 0) + h
+      );
+    }
+
     // Calculate per-pod financials
     const podResults = pods.map((pod) => {
       const podMemberships = allMemberships
@@ -257,6 +278,9 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
       let totalBillable = 0;
       let totalWorked = 0;
       let totalWorking = 0;
+      // Allocation-scaled capacity (the share of working time actually committed
+      // to this pod). Used as the denominator for sold-capacity %.
+      let totalAllocatedCapacityHours = 0;
 
       podMemberships.forEach((membership) => {
         const effectiveStart = new Date(Math.max(membership.start_date.getTime(), startDate.getTime()));
@@ -274,9 +298,11 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
 
         const businessDays = calculateBusinessDays(effectiveStart, effectiveEnd, holidayDates);
         totalWorking += businessDays * 8;
+        totalAllocatedCapacityHours +=
+          businessDays * 8 * (parseFloat(membership.allocation_pct.toString()) / 100);
       });
 
-      // Direct expenses across all this pod's tagged projects, this period
+      // Direct expenses + contracted hours across all this pod's tagged projects, this period
       const podProjectIds = podMappings
         .filter((m) => !(m.end_date && m.start_date.toISOString().split("T")[0] === m.end_date.toISOString().split("T")[0]))
         .map((m) => m.project.id);
@@ -284,14 +310,28 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
         (sum, pid) => sum + (directExpenseByProject.get(pid) ?? 0),
         0
       );
+      const podContractedHours = podProjectIds.reduce(
+        (sum, pid) => sum + (contractedHoursByProject.get(pid) ?? 0),
+        0
+      );
 
       const grossProfit = podRevenue - podSalaryCosts - podDirectExpenses;
+      const soldCapacityPct =
+        totalAllocatedCapacityHours > 0
+          ? (podContractedHours / totalAllocatedCapacityHours) * 100
+          : null;
+      const effectiveRate =
+        podContractedHours > 0 ? podRevenue / podContractedHours : null;
 
       return {
         pod: { id: pod.id, name: pod.name, leader: pod.leader },
         revenue: podRevenue,
         salary_costs: podSalaryCosts,
         direct_expenses: podDirectExpenses,
+        contracted_hours: podContractedHours,
+        sold_capacity_pct: soldCapacityPct,
+        effective_rate: effectiveRate,
+        allocated_capacity_hours: totalAllocatedCapacityHours,
         gross_profit: grossProfit,
         gross_margin_pct: podRevenue > 0 ? (grossProfit / podRevenue) * 100 : 0,
         total_billable_hours: totalBillable,
@@ -478,6 +518,10 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
       bench_salary_cost: benchTotalCost,
       total_salary_cost: podResults.reduce((s, p) => s + p.salary_costs, 0) + benchTotalCost,
       direct_expenses: podResults.reduce((s, p) => s + (p.direct_expenses || 0), 0),
+      contracted_hours: podResults.reduce((s, p) => s + (p.contracted_hours || 0), 0),
+      allocated_capacity_hours: podResults.reduce((s, p) => s + (p.allocated_capacity_hours || 0), 0),
+      sold_capacity_pct: 0 as number | null,
+      effective_rate: null as number | null,
       gross_profit: podResults.reduce((s, p) => s + p.gross_profit, 0),
       gross_margin_pct: 0,
       total_billable_hours: podResults.reduce((s, p) => s + p.total_billable_hours, 0),
@@ -489,6 +533,12 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
     aggregate.gross_margin_pct = aggregate.revenue > 0 ? (aggregate.gross_profit / aggregate.revenue) * 100 : 0;
     aggregate.overall_utilization_pct = aggregate.total_working_hours > 0 ? (aggregate.total_worked_hours / aggregate.total_working_hours) * 100 : 0;
     aggregate.overall_billability_pct = aggregate.total_working_hours > 0 ? (aggregate.total_billable_hours / aggregate.total_working_hours) * 100 : 0;
+    aggregate.sold_capacity_pct =
+      aggregate.allocated_capacity_hours > 0
+        ? (aggregate.contracted_hours / aggregate.allocated_capacity_hours) * 100
+        : null;
+    aggregate.effective_rate =
+      aggregate.contracted_hours > 0 ? aggregate.revenue / aggregate.contracted_hours : null;
 
     // ────────────────────────────────────────────────────────────────────────
     // TARGET vs ACTUAL

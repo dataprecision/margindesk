@@ -9,6 +9,10 @@ interface PodResult {
   revenue: number;
   salary_costs: number;
   direct_expenses: number;
+  contracted_hours: number;
+  allocated_capacity_hours: number;
+  sold_capacity_pct: number | null;
+  effective_rate: number | null;
   gross_profit: number;
   gross_margin_pct: number;
   total_billable_hours: number;
@@ -63,6 +67,10 @@ interface ReportData {
     bench_salary_cost: number;
     total_salary_cost: number;
     direct_expenses: number;
+    contracted_hours: number;
+    allocated_capacity_hours: number;
+    sold_capacity_pct: number | null;
+    effective_rate: number | null;
     gross_profit: number;
     gross_margin_pct: number;
     total_billable_hours: number;
@@ -100,6 +108,7 @@ export default function PodOwnerFinancialsPage() {
   // it descending (high → low); clicking the same column toggles to ascending.
   type SortField =
     | "name" | "leader" | "member_count" | "revenue" | "salary_costs" | "direct_expenses"
+    | "contracted_hours" | "sold_capacity_pct" | "effective_rate"
     | "gross_profit" | "gross_margin_pct" | "utilization_pct" | "billability_pct";
   const [sortField, setSortField] = useState<SortField>("salary_costs");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -465,6 +474,30 @@ export default function PodOwnerFinancialsPage() {
                             Direct Exp.{sortArrow("direct_expenses")}
                           </button>
                         </th>
+                        <th
+                          className="px-4 py-3 text-right text-sm font-semibold text-gray-700"
+                          title="Sum of contracted hours (ProjectHours) across this pod's projects for the selected period."
+                        >
+                          <button onClick={() => setSort("contracted_hours")} className="hover:text-blue-600">
+                            Contracted Hrs{sortArrow("contracted_hours")}
+                          </button>
+                        </th>
+                        <th
+                          className="px-4 py-3 text-center text-sm font-semibold text-gray-700"
+                          title="Contracted hours / allocation-scaled pod capacity. >100% means the pod is over-sold."
+                        >
+                          <button onClick={() => setSort("sold_capacity_pct")} className="hover:text-blue-600">
+                            Sold Cap.{sortArrow("sold_capacity_pct")}
+                          </button>
+                        </th>
+                        <th
+                          className="px-4 py-3 text-right text-sm font-semibold text-gray-700"
+                          title="Revenue / Contracted Hrs — what the client actually pays per hour bought."
+                        >
+                          <button onClick={() => setSort("effective_rate")} className="hover:text-blue-600">
+                            Eff. Rate{sortArrow("effective_rate")}
+                          </button>
+                        </th>
                         <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">
                           <button onClick={() => setSort("gross_profit")} className="hover:text-blue-600">
                             Gross Profit{sortArrow("gross_profit")}
@@ -503,6 +536,33 @@ export default function PodOwnerFinancialsPage() {
                           <td className="px-4 py-3 text-right text-green-600">{formatCurrency(pod.revenue)}</td>
                           <td className="px-4 py-3 text-right text-red-600">{formatCurrency(pod.salary_costs)}</td>
                           <td className="px-4 py-3 text-right text-red-600">{formatCurrency(pod.direct_expenses || 0)}</td>
+                          <td className="px-4 py-3 text-right">
+                            {pod.contracted_hours > 0 ? pod.contracted_hours.toFixed(1) : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {pod.sold_capacity_pct === null || pod.sold_capacity_pct === undefined ? (
+                              <span className="text-gray-400">—</span>
+                            ) : (
+                              <span
+                                className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  pod.sold_capacity_pct >= 100
+                                    ? "bg-red-100 text-red-800"
+                                    : pod.sold_capacity_pct >= 70
+                                      ? "bg-green-100 text-green-800"
+                                      : pod.sold_capacity_pct >= 40
+                                        ? "bg-yellow-100 text-yellow-800"
+                                        : "bg-gray-100 text-gray-700"
+                                }`}
+                              >
+                                {formatPercent(pod.sold_capacity_pct)}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-700">
+                            {pod.effective_rate
+                              ? `₹${pod.effective_rate.toLocaleString("en-IN", { maximumFractionDigits: 0 })}/hr`
+                              : "—"}
+                          </td>
                           <td className="px-4 py-3 text-right font-medium">{formatCurrency(pod.gross_profit)}</td>
                           <td className="px-4 py-3 text-center">
                             <span
@@ -576,12 +636,15 @@ export default function PodOwnerFinancialsPage() {
                             <td className="px-4 py-3 text-right text-gray-400">—</td>
                             <td className="px-4 py-3 text-right text-gray-400">—</td>
                             <td className="px-4 py-3 text-center text-gray-400">—</td>
+                            <td className="px-4 py-3 text-right text-gray-400">—</td>
+                            <td className="px-4 py-3 text-right text-gray-400">—</td>
+                            <td className="px-4 py-3 text-center text-gray-400">—</td>
                             <td className="px-4 py-3 text-center text-gray-400">—</td>
                             <td className="px-4 py-3 text-center text-gray-400">—</td>
                           </tr>
                           {benchExpanded && report.bench.people_count > 0 && (
                             <tr className="bg-amber-25">
-                              <td colSpan={10} className="px-6 py-4 bg-amber-50/40">
+                              <td colSpan={13} className="px-6 py-4 bg-amber-50/40">
                                 <div className="text-xs text-gray-600 mb-2">
                                   These reportees had no pod allocation for part of the period. Cost shown
                                   on the row above is the sum across all unallocated person-days, prorated
@@ -626,6 +689,21 @@ export default function PodOwnerFinancialsPage() {
                         <td className="px-4 py-3 text-right text-green-600">{formatCurrency(report.aggregate.revenue)}</td>
                         <td className="px-4 py-3 text-right text-red-600">{formatCurrency(report.aggregate.total_salary_cost)}</td>
                         <td className="px-4 py-3 text-right text-red-600">{formatCurrency(report.aggregate.direct_expenses || 0)}</td>
+                        <td className="px-4 py-3 text-right">
+                          {report.aggregate.contracted_hours > 0
+                            ? report.aggregate.contracted_hours.toFixed(1)
+                            : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {report.aggregate.sold_capacity_pct === null
+                            ? "—"
+                            : formatPercent(report.aggregate.sold_capacity_pct)}
+                        </td>
+                        <td className="px-4 py-3 text-right text-gray-700">
+                          {report.aggregate.effective_rate
+                            ? `₹${report.aggregate.effective_rate.toLocaleString("en-IN", { maximumFractionDigits: 0 })}/hr`
+                            : "—"}
+                        </td>
                         <td className="px-4 py-3 text-right">{formatCurrency(report.aggregate.gross_profit)}</td>
                         <td className="px-4 py-3 text-center">{formatPercent(report.aggregate.gross_margin_pct)}</td>
                         <td className="px-4 py-3 text-center">{formatPercent(report.aggregate.overall_utilization_pct)}</td>
