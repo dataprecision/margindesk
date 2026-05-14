@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "rm -rf .next/standalone/.next/static && cp -r .next/static .next/standalone/.next/static && if [ -d public ]; then rm -rf .next/standalone/public && cp -r public .next/standalone/public; fi",
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit"
