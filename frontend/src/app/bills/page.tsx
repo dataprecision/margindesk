@@ -1,6 +1,173 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
+
+interface ProjectComboboxProps {
+  value: string | null;
+  projects: ProjectOption[];
+  // Currently-tagged project even if no longer in `projects` list (e.g. completed)
+  currentProject?: { id: string; name: string } | null;
+  disabled?: boolean;
+  onChange: (projectId: string | null) => void;
+}
+
+/** Searchable single-select. Click to open, type to filter (matches client OR project name), arrow keys to navigate, Enter to pick, Esc to close. */
+function ProjectCombobox({
+  value,
+  projects,
+  currentProject,
+  disabled,
+  onChange,
+}: ProjectComboboxProps) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [activeIdx, setActiveIdx] = useState(0);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Build the full option list, prepending currentProject if it's tagged but missing from active list
+  const options = useMemo(() => {
+    const list = projects.map((p) => ({
+      id: p.id,
+      label: p.client?.name ? `${p.client.name} — ${p.name}` : p.name,
+      stale: false,
+    }));
+    if (currentProject && !projects.find((p) => p.id === currentProject.id)) {
+      list.unshift({
+        id: currentProject.id,
+        label: `${currentProject.name} (current)`,
+        stale: true,
+      });
+    }
+    return list;
+  }, [projects, currentProject]);
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return options;
+    const q = query.toLowerCase();
+    return options.filter((o) => o.label.toLowerCase().includes(q));
+  }, [options, query]);
+
+  // Close on click outside
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery("");
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  // Focus search input when opened
+  useEffect(() => {
+    if (open) {
+      setActiveIdx(0);
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
+  }, [open]);
+
+  const selected = options.find((o) => o.id === value);
+  const buttonLabel = selected ? selected.label : "— Untagged —";
+
+  const pick = (id: string | null) => {
+    onChange(id);
+    setOpen(false);
+    setQuery("");
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIdx((i) => Math.min(filtered.length, i + 1)); // filtered.length = "Untagged" row index
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIdx((i) => Math.max(0, i - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (activeIdx === filtered.length) {
+        pick(null); // "Untagged" row
+      } else if (filtered[activeIdx]) {
+        pick(filtered[activeIdx].id);
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+      setQuery("");
+    }
+  };
+
+  return (
+    <div ref={wrapperRef} className="relative inline-block w-[200px]">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((v) => !v)}
+        className={`w-full text-left text-xs px-2 py-1 border border-gray-300 rounded bg-white truncate ${
+          disabled ? "opacity-50 cursor-not-allowed" : "hover:border-blue-400"
+        }`}
+        title={buttonLabel}
+      >
+        {buttonLabel}
+        <span className="float-right text-gray-400">▾</span>
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-[280px] bg-white border border-gray-300 rounded shadow-lg">
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setActiveIdx(0);
+            }}
+            onKeyDown={onKeyDown}
+            placeholder="Search client or project…"
+            className="w-full text-xs px-2 py-1.5 border-b border-gray-200 focus:outline-none"
+          />
+          <ul className="max-h-60 overflow-y-auto text-xs">
+            {filtered.length === 0 ? (
+              <li className="px-2 py-2 text-gray-500 italic">No matches</li>
+            ) : (
+              filtered.map((o, idx) => (
+                <li
+                  key={o.id}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    pick(o.id);
+                  }}
+                  onMouseEnter={() => setActiveIdx(idx)}
+                  className={`px-2 py-1.5 cursor-pointer truncate ${
+                    idx === activeIdx ? "bg-blue-50 text-blue-900" : "hover:bg-gray-50"
+                  } ${o.stale ? "italic text-gray-600" : ""} ${
+                    o.id === value ? "font-semibold" : ""
+                  }`}
+                  title={o.label}
+                >
+                  {o.label}
+                </li>
+              ))
+            )}
+            <li
+              onMouseDown={(e) => {
+                e.preventDefault();
+                pick(null);
+              }}
+              onMouseEnter={() => setActiveIdx(filtered.length)}
+              className={`px-2 py-1.5 cursor-pointer border-t border-gray-100 text-gray-500 ${
+                activeIdx === filtered.length ? "bg-blue-50 text-blue-900" : "hover:bg-gray-50"
+              } ${value === null ? "font-semibold" : ""}`}
+            >
+              — Untagged —
+            </li>
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface BillLineItem {
   id: string;
@@ -774,32 +941,13 @@ export default function BillsPage() {
                                               ₹{item.item_total.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
                                             </td>
                                             <td className="px-3 py-2 text-xs">
-                                              <select
-                                                value={item.project_id || ""}
+                                              <ProjectCombobox
+                                                value={item.project_id}
+                                                projects={projects}
+                                                currentProject={item.project}
                                                 disabled={taggingLineItems.has(item.id) || !bill.include_in_calculation}
-                                                onChange={(e) =>
-                                                  tagLineItemProject(item.id, e.target.value || null)
-                                                }
-                                                className="text-xs px-1 py-0.5 border border-gray-300 rounded max-w-[180px]"
-                                                title={
-                                                  !bill.include_in_calculation
-                                                    ? "Bill is excluded from calculation — tagging disabled"
-                                                    : item.project?.name || "Untagged"
-                                                }
-                                              >
-                                                <option value="">— Untagged —</option>
-                                                {/* Show currently-tagged project even if not active (e.g., completed) */}
-                                                {item.project && !projects.find((p) => p.id === item.project!.id) && (
-                                                  <option value={item.project.id}>
-                                                    {item.project.name} (current)
-                                                  </option>
-                                                )}
-                                                {projects.map((p) => (
-                                                  <option key={p.id} value={p.id}>
-                                                    {p.client?.name ? `${p.client.name} — ` : ""}{p.name}
-                                                  </option>
-                                                ))}
-                                              </select>
+                                                onChange={(id) => tagLineItemProject(item.id, id)}
+                                              />
                                             </td>
                                           </tr>
                                         ))}
