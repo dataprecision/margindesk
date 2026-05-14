@@ -7,6 +7,7 @@ const PM_ALLOWED_PATHS = [
   "/dashboard",
   "/pods",
   "/project-costs",
+  "/project-hours",
   "/holidays",
   "/reports/pod-financials",
   "/reports/pod-owner-financials",
