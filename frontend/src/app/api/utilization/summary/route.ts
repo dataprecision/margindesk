@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth/protect-route";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 
-const prisma = new PrismaClient();
 
 /**
  * GET /api/utilization/summary?month=2025-01

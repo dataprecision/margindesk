@@ -1,7 +1,6 @@
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { getDescendantOwnerIds } from "@/lib/pod-owner-tree";
 
-const prisma = new PrismaClient();
 
 /**
  * Get pod IDs that a PM user can access.

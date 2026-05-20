@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/auth/protect-route";
 import { getZohoBooksApiUrl } from "@/lib/zoho/config";
 import { getZohoAccessToken } from "@/lib/zoho/token-manager";
 import { shouldExcludeBill, type BillExclusionRule } from "@/lib/bill-exclusion-rules";
 
-const prisma = new PrismaClient();
 
 /**
  * POST /api/sync/bills

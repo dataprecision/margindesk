@@ -1,7 +1,6 @@
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { getZohoAccountsUrl } from "./config";
 
-const prisma = new PrismaClient();
 
 interface ZohoTokens {
   access_token: string;

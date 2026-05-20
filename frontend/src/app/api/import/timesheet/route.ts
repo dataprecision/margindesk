@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/auth/protect-route";
 import { parse } from "csv-parse/sync";
 import { createHash } from "crypto";
 
-const prisma = new PrismaClient();
 
 interface TimesheetRow {
   Date: string;

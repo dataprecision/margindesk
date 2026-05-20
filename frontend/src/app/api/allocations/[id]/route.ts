@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/auth/protect-route";
 import { getPersonIdsForUser, getProjectIdsForUser } from "@/lib/auth/pod-scope";
 
-const prisma = new PrismaClient();
 
 async function assertPMScope(allocation: { person_id: string; project_id: string }, user: any) {
   const allowedPersonIds = await getPersonIdsForUser(user.email, user.role);

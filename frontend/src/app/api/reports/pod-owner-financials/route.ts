@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/auth/protect-route";
 import { getDescendantOwnerIds } from "@/lib/pod-owner-tree";
 import { getPodIdsForUser } from "@/lib/auth/pod-scope";
 
-const prisma = new PrismaClient();
 
 /**
  * Calculate business days between two dates excluding weekends and holidays

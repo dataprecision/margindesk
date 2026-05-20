@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { getZohoAccountsUrl, getZohoApiDomain } from "@/lib/zoho/config";
 
-const prisma = new PrismaClient();
 
 /**
  * GET /api/zoho/callback

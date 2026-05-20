@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/auth/protect-route";
 
-const prisma = new PrismaClient();
 
 /**
  * GET /api/bill-exclusion-rules

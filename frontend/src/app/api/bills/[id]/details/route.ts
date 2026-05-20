@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { withAdminRole } from "@/lib/auth/protect-route";
 import { getZohoAccessToken } from "@/lib/zoho/token-manager";
 
-const prisma = new PrismaClient();
 
 /**
  * POST /api/bills/[id]/details

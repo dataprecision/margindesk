@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { withAdminRole } from "@/lib/auth/protect-route";
 
-const prisma = new PrismaClient();
 
 /**
  * GET /api/pod-owner-targets?fiscal_year=2026

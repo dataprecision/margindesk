@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { withAdminRole, withAuth } from "@/lib/auth/protect-route";
 import { buildTree, getDescendantOwnerIds } from "@/lib/pod-owner-tree";
 
-const prisma = new PrismaClient();
 
 /**
  * GET /api/pod-owners

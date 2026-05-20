@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/auth/protect-route";
 import { parse } from "csv-parse/sync";
 
-const prisma = new PrismaClient();
 
 interface SalaryRow {
   "Emp Code": string;

@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/auth/protect-route";
 import { getPodIdsForUser } from "@/lib/auth/pod-scope";
-
-const prisma = new PrismaClient({
-  log: ['query', 'info', 'warn', 'error'],
-});
 
 /**
  * Calculate number of working days (excluding weekends and holidays) between two dates

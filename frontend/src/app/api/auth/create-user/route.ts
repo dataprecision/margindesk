@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { withRole } from "@/lib/auth/protect-route";
 
-const prisma = new PrismaClient();
 
 /**
  * POST /api/auth/create-user
