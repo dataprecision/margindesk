@@ -115,6 +115,7 @@ model Person {
   pod_memberships     PodMembership[]
   pod_owner_nodes     PodOwner[]
   timesheet_entries   TimesheetEntry[]
+  email_aliases       PersonEmailAlias[]
 
   @@index([email])
   @@index([billable])
@@ -123,6 +124,17 @@ model Person {
   @@index([employee_code])
   @@index([department])
   @@index([manager_id])
+}
+
+model PersonEmailAlias {
+  id         String   @id @default(cuid())
+  person_id  String
+  email      String   @unique
+  source     String?
+  created_at DateTime @default(now())
+  person     Person   @relation(fields: [person_id], references: [id], onDelete: Cascade)
+
+  @@index([person_id])
 }
 
 model ManagerHistory {
@@ -593,18 +605,20 @@ model AuditLog {
 }
 
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  name          String?
-  password      String?  // Nullable for OAuth users
-  auth_provider String   @default("microsoft") // "microsoft" or "credentials"
-  role          UserRole @default(readonly)
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  id                String   @id @default(cuid())
+  email             String   @unique
+  microsoft_user_id String?  @unique
+  name              String?
+  password          String?
+  auth_provider     String   @default("microsoft")
+  role              UserRole @default(readonly)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
 
   targets_set   PodOwnerTarget[]
 
   @@index([email])
+  @@index([microsoft_user_id])
   @@index([role])
   @@index([auth_provider])
 }
