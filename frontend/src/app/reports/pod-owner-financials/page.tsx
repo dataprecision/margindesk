@@ -40,6 +40,8 @@ interface BenchResult {
 interface TargetVsActual {
   fiscal_year: number;
   fiscal_year_label?: string;
+  rolled_up?: boolean;
+  rollup_contributors?: string[];
   months_in_period?: number;
   spans_multiple_fy?: boolean;
   profitability_target_pct?: number;
@@ -308,6 +310,13 @@ export default function PodOwnerFinancialsPage() {
                     {report.target.months_in_period === 1 ? "" : "s"} in view
                   </span>
                 </div>
+                {report.target.rolled_up && (
+                  <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+                    No target is set on {report.owner.name} directly — rolled up from{" "}
+                    {report.target.rollup_contributors?.join(", ")} (baselines summed, margin target
+                    revenue-weighted).
+                  </div>
+                )}
                 {report.target.spans_multiple_fy && (
                   <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
                     Period crosses fiscal-year boundary — comparison uses the target for FY{" "}

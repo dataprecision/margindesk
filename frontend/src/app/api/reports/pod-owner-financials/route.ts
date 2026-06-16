@@ -567,18 +567,67 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
       : endDateOriginal.getUTCFullYear() - 1;
     const spansMultipleFY = startFY !== endFY;
 
-    const target = await prisma.podOwnerTarget.findUnique({
+    const ownTarget = await prisma.podOwnerTarget.findUnique({
       where: { pod_owner_id_fiscal_year: { pod_owner_id: ownerNode.id, fiscal_year: startFY } },
     });
+
+    // If this owner has no target of its own, roll up the targets of its
+    // descendant owner nodes for the same fiscal year (e.g. a head whose budget
+    // is the sum of their sub-owners'). Baselines sum; the margin target is
+    // weighted by each unit's target revenue so the larger unit dominates.
+    let effectiveTarget:
+      | { baseline_revenue: number; revenue_growth_target: number; profitability_target: number; notes: string | null }
+      | null = ownTarget
+      ? {
+          baseline_revenue: parseFloat(ownTarget.baseline_revenue.toString()),
+          revenue_growth_target: parseFloat(ownTarget.revenue_growth_target.toString()),
+          profitability_target: parseFloat(ownTarget.profitability_target.toString()),
+          notes: ownTarget.notes,
+        }
+      : null;
+    let rolledUp = false;
+    const rollupContributors: string[] = [];
+
+    if (!ownTarget) {
+      const childOwnerIds = descendantIds.filter((id) => id !== ownerNode.id);
+      if (childOwnerIds.length > 0) {
+        const childTargets = await prisma.podOwnerTarget.findMany({
+          where: { pod_owner_id: { in: childOwnerIds }, fiscal_year: startFY },
+          include: { pod_owner: { select: { name: true } } },
+        });
+        if (childTargets.length > 0) {
+          let sumBaseline = 0;
+          let sumTargetRevenue = 0;
+          let marginWeightedByTargetRevenue = 0;
+          for (const ct of childTargets) {
+            const b = parseFloat(ct.baseline_revenue.toString());
+            const g = parseFloat(ct.revenue_growth_target.toString());
+            const pr = parseFloat(ct.profitability_target.toString());
+            const tr = b * (1 + g / 100);
+            sumBaseline += b;
+            sumTargetRevenue += tr;
+            marginWeightedByTargetRevenue += pr * tr;
+            rollupContributors.push(ct.pod_owner?.name ?? ct.pod_owner_id);
+          }
+          effectiveTarget = {
+            baseline_revenue: sumBaseline,
+            revenue_growth_target: sumBaseline > 0 ? (sumTargetRevenue / sumBaseline - 1) * 100 : 0,
+            profitability_target: sumTargetRevenue > 0 ? marginWeightedByTargetRevenue / sumTargetRevenue : 0,
+            notes: null,
+          };
+          rolledUp = true;
+        }
+      }
+    }
 
     const monthsInPeriod = months.length;
     const periodFraction = monthsInPeriod / 12;
 
-    const targetBlock = target
+    const targetBlock = effectiveTarget
       ? (() => {
-          const baseline = parseFloat(target.baseline_revenue.toString());
-          const growthPct = parseFloat(target.revenue_growth_target.toString());
-          const profitabilityPct = parseFloat(target.profitability_target.toString());
+          const baseline = effectiveTarget!.baseline_revenue;
+          const growthPct = effectiveTarget!.revenue_growth_target;
+          const profitabilityPct = effectiveTarget!.profitability_target;
           const proportionalBaseline = baseline * periodFraction;
           const proportionalTargetRevenue = proportionalBaseline * (1 + growthPct / 100);
 
@@ -588,8 +637,10 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
             : null;
 
           return {
-            fiscal_year: target.fiscal_year,
-            fiscal_year_label: `FY ${target.fiscal_year} (Apr ${target.fiscal_year} – Mar ${target.fiscal_year + 1})`,
+            fiscal_year: startFY,
+            fiscal_year_label: `FY ${startFY} (Apr ${startFY} – Mar ${startFY + 1})`,
+            rolled_up: rolledUp,
+            rollup_contributors: rollupContributors,
             months_in_period: monthsInPeriod,
             spans_multiple_fy: spansMultipleFY,
             profitability_target_pct: profitabilityPct,
@@ -602,7 +653,7 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
             actual_revenue: aggregate.revenue,
             actual_growth_pct: actualGrowthPct,
             growth_delta_pp: actualGrowthPct !== null ? actualGrowthPct - growthPct : null,
-            notes: target.notes,
+            notes: effectiveTarget!.notes,
           };
         })()
       : { fiscal_year: startFY, spans_multiple_fy: spansMultipleFY, target: null };
