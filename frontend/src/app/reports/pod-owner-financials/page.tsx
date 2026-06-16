@@ -156,9 +156,11 @@ export default function PodOwnerFinancialsPage() {
     if (qStart) {
       setStartMonth(qStart);
     } else {
+      // Default to the start of the current Indian fiscal year (April–March):
+      // April of the current FY, so the report opens on FY-to-date.
       const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth() - 3, 1);
-      setStartMonth(`${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`);
+      const fyStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+      setStartMonth(`${fyStartYear}-04`);
     }
 
     if (qEnd) {
