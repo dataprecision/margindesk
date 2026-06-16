@@ -55,6 +55,7 @@ export default function Sidebar() {
     { href: "/settings/products", label: "Products", icon: "📦" },
     { href: "/settings/import-data", label: "Import Data", icon: "📥" },
     { href: "/settings/import-salary", label: "Import Salary", icon: "💵" },
+    { href: "/settings/api-keys", label: "API Keys", icon: "🔑" },
   ];
 
   const allReportItems = [

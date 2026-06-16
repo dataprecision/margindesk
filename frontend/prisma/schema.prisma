@@ -604,6 +604,25 @@ model AuditLog {
   @@index([at])
 }
 
+/// API keys for external/server-to-server access to read-only endpoints.
+/// The plaintext key is shown once at creation and never stored — only the
+/// sha256 hash is persisted. `prefix` is a non-secret identifier shown in the UI.
+model ApiKey {
+  id           String    @id @default(cuid())
+  name         String // consumer label, e.g. "HR Portal"
+  prefix       String    @unique // non-secret leading segment, shown in UI
+  key_hash     String    @unique // sha256 hex of the full plaintext key
+  scopes       String[]  @default(["pods:read"])
+  active       Boolean   @default(true)
+  last_used_at DateTime?
+  expires_at   DateTime?
+  created_by   String? // email of the user who minted it
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  @@index([active])
+}
+
 model User {
   id                String   @id @default(cuid())
   email             String   @unique
