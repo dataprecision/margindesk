@@ -66,7 +66,15 @@ export const GET = withAuth(async (req, { user }) => {
       personWhere.department = department;
     }
 
-    // PM role: scope to people in their pods only
+    // Salary visibility policy:
+    //  - owner/finance: all people (getPersonIdsForUser returns null).
+    //  - pm (pod leads/owners, e.g. pod leads): DELIBERATELY scoped to the
+    //    individual salaries of members of pods they lead or own. This is the
+    //    intended access level — not an oversight. The write side that
+    //    determines pod membership (POST /api/pods/[id]/members) is gated to the
+    //    same pod scope so a PM cannot widen this set by injecting members.
+    //  - readonly / no person record: empty set.
+    // Salary edits remain owner/finance-only (PATCH /api/salaries/[id]).
     const allowedPersonIds = await getPersonIdsForUser(user.email, user.role);
     if (allowedPersonIds !== null) {
       personWhere.id = { in: allowedPersonIds };

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/auth/protect-route";
+import { getPodIdsForUser } from "@/lib/auth/pod-scope";
 
 
 /**
@@ -80,8 +81,20 @@ export const POST = withAuth(async (req: NextRequest, { user, params }: { user: 
       );
     }
 
-    // PM role: can only add people in their reporting chain
+    // PM role: can only add people in their reporting chain, and only to pods
+    // they actually lead or own. The pod-scope gate must mirror the salary read
+    // scope (getPersonIdsForUser in /api/salaries): a PM can read the individual
+    // salaries of members of pods they lead/own, so a PM must not be able to
+    // inject a membership into a pod outside that scope.
     if (user.role === "pm") {
+      const allowedPodIds = await getPodIdsForUser(user.email, user.role);
+      if (allowedPodIds === null || !allowedPodIds.includes(id)) {
+        return NextResponse.json(
+          { error: "You can only add members to pods you lead or own" },
+          { status: 403 }
+        );
+      }
+
       const pmPerson = await prisma.person.findUnique({
         where: { email: user.email },
         select: { id: true },

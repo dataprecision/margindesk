@@ -324,6 +324,13 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
         utilization_pct: utilizationPct,
         billable_pct: billablePct,
         projects: projectBreakdown,
+        // Per-member salary reporting. salary_cost accumulates the prorated
+        // cost this member contributes to the pod over the period (so the sum
+        // across members reconciles to costs.salaries below). monthly_salary is
+        // the member's most recent in-period monthly total (null if no payroll
+        // row exists for any month in range).
+        salary_cost: 0,
+        monthly_salary: null as number | null,
       };
     });
 
@@ -395,6 +402,15 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
           const memberCost = monthlySalary * allocationPct * prorationFactor;
 
           monthCost += memberCost;
+
+          // Accumulate per-member salary for user-wise reporting. months are
+          // iterated in ascending order, so the last write to monthly_salary is
+          // the latest in-period month.
+          const memberEntry = utilizationByMember[person.id];
+          if (memberEntry) {
+            memberEntry.salary_cost += memberCost;
+            memberEntry.monthly_salary = monthlySalary;
+          }
         }
       });
 

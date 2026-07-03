@@ -65,6 +65,8 @@ interface PodReport {
       utilization_pct: number;
       billable_pct: number;
       projects: Record<string, { name: string; hours: number }>;
+      salary_cost: number;
+      monthly_salary: number | null;
     }>;
   };
 }
@@ -506,6 +508,18 @@ export default function PodFinancialsReportPage() {
                     <tr>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Resource</th>
                       <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Allocation %</th>
+                      <th
+                        className="px-4 py-3 text-right text-sm font-semibold text-gray-700"
+                        title="Member's most recent monthly salary (PersonSalary total) within the selected period"
+                      >
+                        Monthly Salary
+                      </th>
+                      <th
+                        className="px-4 py-3 text-right text-sm font-semibold text-gray-700"
+                        title="This member's prorated salary cost to the pod over the period (allocation % × days-in-pod). Sums to the pod's Salary Costs."
+                      >
+                        Pod Cost
+                      </th>
                       <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Billable Hrs</th>
                       <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Non-Bill Hrs</th>
                       <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Unutilized</th>
@@ -521,6 +535,16 @@ export default function PodFinancialsReportPage() {
                           <div className="text-sm text-gray-600">{member.person.employee_code}</div>
                         </td>
                         <td className="px-4 py-3 text-center">{member.allocation_pct}%</td>
+                        <td className="px-4 py-3 text-right">
+                          {member.monthly_salary === null ? (
+                            <span className="text-gray-400" title="No payroll record for this member in the selected period">—</span>
+                          ) : (
+                            formatCurrency(member.monthly_salary)
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium text-red-600">
+                          {formatCurrency(member.salary_cost)}
+                        </td>
                         <td className="px-4 py-3 text-right">{member.billable_hours.toFixed(1)}</td>
                         <td className="px-4 py-3 text-right">{member.non_billable_hours.toFixed(1)}</td>
                         <td className="px-4 py-3 text-right text-red-600">{member.unutilized_hours.toFixed(1)}</td>
