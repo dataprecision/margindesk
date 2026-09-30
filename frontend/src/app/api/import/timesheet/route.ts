@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/auth/protect-route";
 import { parse } from "csv-parse/sync";
 import { createHash } from "crypto";
+import { normalizeEmail, resolvePerson } from "@/lib/people/resolve-person";
 
 
 interface TimesheetRow {
@@ -105,6 +106,7 @@ export const POST = withAuth(async (req, { user }: { user: any }) => {
       skippedRows: 0,
       newProjects: 0,
       newContractors: 0,
+      newContractorEmails: [] as string[],
       deletedEntries: 0,
       newEntries: 0,
       errors: [] as string[],
@@ -116,6 +118,7 @@ export const POST = withAuth(async (req, { user }: { user: any }) => {
 
     // Collect all entries to insert
     const entriesToInsert: any[] = [];
+    const personIdByKey = new Map<string, string | null>();
 
     for (const [index, record] of records.entries()) {
       try {
@@ -171,14 +174,21 @@ export const POST = withAuth(async (req, { user }: { user: any }) => {
         if (!minDate || date < minDate) minDate = date;
         if (!maxDate || date > maxDate) maxDate = date;
 
-        // Find or create person by email (handles contractors)
-        let person = await prisma.person.findUnique({
-          where: { email: record["Email Id"].toLowerCase().trim() },
-        });
+        // Find or create person (handles contractors). Employee code is the
+        // stable key; email goes through the identifier map (aliases, .in/.com)
+        // and the work date picks the right employment for rehires.
+        const email = normalizeEmail(record["Email Id"]);
+        const employeeCode = record["Employee Code"]?.trim() || null;
+        const lookupKey = `${employeeCode ?? ""}|${email}|${date.toISOString().slice(0, 7)}`;
+        let personId = personIdByKey.get(lookupKey) ?? null;
+        if (!personIdByKey.has(lookupKey)) {
+          personId = await resolvePerson({ employeeCode, email, onDate: date });
+          personIdByKey.set(lookupKey, personId);
+        }
+        let person = personId ? { id: personId } : null;
 
         if (!person) {
           // Auto-create as contractor
-          const email = record["Email Id"].toLowerCase().trim();
           const name = record["User Name"] || email.split('@')[0];
 
           person = await prisma.person.create({
@@ -193,7 +203,9 @@ export const POST = withAuth(async (req, { user }: { user: any }) => {
             },
           });
 
+          personIdByKey.set(lookupKey, person.id);
           stats.newContractors++;
+          stats.newContractorEmails.push(email);
           console.log(`Auto-created contractor: ${name} (${email})`);
         }
 
@@ -260,51 +272,56 @@ export const POST = withAuth(async (req, { user }: { user: any }) => {
       });
     }
 
-    // Create import batch record
-    const importBatch = await prisma.timesheetImportBatch.create({
-      data: {
-        imported_by: user.id,
-        file_name: file.name,
-        period_start: minDate!,
-        period_end: maxDate!,
-        total_rows: records.length,
-        processed_rows: stats.processedRows,
-        skipped_rows: stats.skippedRows,
-        error_messages: stats.errors,
+    // Batch record, period delete and insert run in one transaction so a
+    // failed insert can never leave the period empty.
+    const importBatch = await prisma.$transaction(
+      async (tx) => {
+        const batch = await tx.timesheetImportBatch.create({
+          data: {
+            imported_by: user.id,
+            file_name: file.name,
+            period_start: minDate!,
+            period_end: maxDate!,
+            total_rows: records.length,
+            processed_rows: stats.processedRows,
+            skipped_rows: stats.skippedRows,
+            error_messages: stats.errors,
+          },
+        });
+
+        // Delete existing entries for this period
+        const deleteResult = await tx.timesheetEntry.deleteMany({
+          where: {
+            work_date: {
+              gte: minDate!,
+              lte: maxDate!,
+            },
+          },
+        });
+
+        stats.deletedEntries = deleteResult.count;
+        console.log(`🗑️ Deleted ${deleteResult.count} existing entries for period ${minDate?.toISOString().split('T')[0]} to ${maxDate?.toISOString().split('T')[0]}`);
+
+        // Insert new entries with import_batch_id
+        const entriesWithBatchId = entriesToInsert.map(entry => ({
+          ...entry,
+          import_batch_id: batch.id,
+        }));
+
+        await tx.timesheetEntry.createMany({
+          data: entriesWithBatchId,
+          skipDuplicates: true, // Safety net for hash collisions
+        });
+
+        stats.newEntries = entriesWithBatchId.length;
+
+        return tx.timesheetImportBatch.update({
+          where: { id: batch.id },
+          data: { deleted_entries: stats.deletedEntries },
+        });
       },
-    });
-
-    // Delete existing entries for this period
-    const deleteResult = await prisma.timesheetEntry.deleteMany({
-      where: {
-        work_date: {
-          gte: minDate!,
-          lte: maxDate!,
-        },
-      },
-    });
-
-    stats.deletedEntries = deleteResult.count;
-    console.log(`🗑️ Deleted ${deleteResult.count} existing entries for period ${minDate?.toISOString().split('T')[0]} to ${maxDate?.toISOString().split('T')[0]}`);
-
-    // Insert new entries with import_batch_id
-    const entriesWithBatchId = entriesToInsert.map(entry => ({
-      ...entry,
-      import_batch_id: importBatch.id,
-    }));
-
-    await prisma.timesheetEntry.createMany({
-      data: entriesWithBatchId,
-      skipDuplicates: true, // Safety net for hash collisions
-    });
-
-    stats.newEntries = entriesWithBatchId.length;
-
-    // Update batch with deleted count
-    await prisma.timesheetImportBatch.update({
-      where: { id: importBatch.id },
-      data: { deleted_entries: stats.deletedEntries },
-    });
+      { timeout: 120_000, maxWait: 10_000 }
+    );
 
     // Log the import
     await prisma.auditLog.create({

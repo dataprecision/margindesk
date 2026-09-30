@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { resolvePersonIdByEmail } from "@/lib/people/resolve-person";
 import { withAuth } from "@/lib/auth/protect-route";
 import { getPodIdsForUser } from "@/lib/auth/pod-scope";
 
@@ -95,10 +96,13 @@ export const POST = withAuth(async (req: NextRequest, { user, params }: { user: 
         );
       }
 
-      const pmPerson = await prisma.person.findUnique({
-        where: { email: user.email },
-        select: { id: true },
-      });
+      const pmPersonId = await resolvePersonIdByEmail(user.email);
+      const pmPerson = pmPersonId
+        ? await prisma.person.findUnique({
+            where: { id: pmPersonId },
+            select: { id: true },
+          })
+        : null;
 
       if (!pmPerson) {
         return NextResponse.json(

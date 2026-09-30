@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/auth/protect-route";
 import { parse } from "csv-parse/sync";
+import { normalizeEmployeeCode, resolvePersonIdByEmployeeCode } from "@/lib/people/resolve-person";
 
 
 interface SalaryRow {
@@ -33,6 +34,9 @@ export const POST = withAuth(async (req: NextRequest, { user }: { user: any }) =
     const formData = await req.formData();
     const file = formData.get("file") as File;
     const monthStr = formData.get("month") as string; // Format: "YYYY-MM"
+    // Rows for a month after the person's exit are skipped unless finance
+    // explicitly marks this upload as carrying full & final settlements.
+    const allowAfterExit = formData.get("allow_after_exit") === "true";
 
     if (!file) {
       console.log("No file provided");
@@ -86,6 +90,7 @@ export const POST = withAuth(async (req: NextRequest, { user }: { user: any }) =
       newRecords: 0,
       updatedRecords: 0,
       newEmployees: 0,
+      skippedAfterExit: 0,
       errors: [] as string[],
     };
 
@@ -136,12 +141,10 @@ export const POST = withAuth(async (req: NextRequest, { user }: { user: any }) =
           continue;
         }
 
-        // Find or create person by employee code
-        let person = await prisma.person.findFirst({
-          where: {
-            employee_code: record["Emp Code"].trim(),
-          },
-        });
+        // Find or create person by employee code (spacing/case-insensitive,
+        // via the identifier map so "DEL- 532" and "DEL-532" are one person)
+        const personId = await resolvePersonIdByEmployeeCode(record["Emp Code"], prisma, salaryMonth);
+        let person = personId ? await prisma.person.findUnique({ where: { id: personId } }) : null;
 
         if (!person) {
           // Create new employee with start_date 3 years ago (for management resources)
@@ -150,7 +153,7 @@ export const POST = withAuth(async (req: NextRequest, { user }: { user: any }) =
 
           person = await prisma.person.create({
             data: {
-              employee_code: record["Emp Code"].trim(),
+              employee_code: normalizeEmployeeCode(record["Emp Code"]),
               name: record["Name"].trim(),
               email: `${record["Emp Code"].trim().toLowerCase()}@temp.local`, // Temporary email
               role: "employee",
@@ -159,6 +162,21 @@ export const POST = withAuth(async (req: NextRequest, { user }: { user: any }) =
           });
           stats.newEmployees++;
           console.log(`✨ Created new employee: ${person.name} (${person.employee_code})`);
+        }
+
+        // Nobody is paid after they leave: a row for a month after the exit
+        // month is a stale CTC-register carry-over unless finance says it is F&F.
+        if (person.end_date && !allowAfterExit) {
+          const exitMonth = person.end_date.getUTCFullYear() * 12 + person.end_date.getUTCMonth();
+          const rowMonth = salaryMonth.getUTCFullYear() * 12 + salaryMonth.getUTCMonth();
+          if (rowMonth > exitMonth) {
+            stats.skippedRows++;
+            stats.skippedAfterExit++;
+            stats.errors.push(
+              `Row ${index + 2}: ${person.name} (${record["Emp Code"]}) left on ${person.end_date.toISOString().slice(0, 10)} — skipped. Tick "Includes full & final" to load settlements.`
+            );
+            continue;
+          }
         }
 
         // Determine if this person is support staff based on department

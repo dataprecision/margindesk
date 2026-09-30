@@ -116,6 +116,7 @@ model Person {
   pod_owner_nodes     PodOwner[]
   timesheet_entries   TimesheetEntry[]
   email_aliases       PersonEmailAlias[]
+  identifiers         PersonIdentifier[]
 
   @@index([email])
   @@index([billable])
@@ -135,6 +136,36 @@ model PersonEmailAlias {
   person     Person   @relation(fields: [person_id], references: [id], onDelete: Cascade)
 
   @@index([person_id])
+}
+
+// Identity lookup: every external identifier (any mailbox address, employee
+// code, Zoho record id, Microsoft object id) that resolves to a Person
+// (= one employment). valid_from/valid_to scope an identifier to the
+// employment period so a rehire's reused email resolves by work date.
+model PersonIdentifier {
+  id         String               @id @default(cuid())
+  person_id  String
+  kind       PersonIdentifierKind
+  value      String // normalized: lowercased email, "DEL-532" style code
+  source     String // m365 | zoho | db | alias_backfill | manual
+  valid_from DateTime?
+  valid_to   DateTime?
+  verified   Boolean              @default(false) // backed by an authoritative source
+  notes      String?
+  created_at DateTime             @default(now())
+  updated_at DateTime             @updatedAt
+  person     Person               @relation(fields: [person_id], references: [id], onDelete: Cascade)
+
+  @@unique([kind, value, person_id])
+  @@index([kind, value])
+  @@index([person_id])
+}
+
+enum PersonIdentifierKind {
+  email
+  employee_code
+  zoho_id
+  m365_id
 }
 
 model ManagerHistory {

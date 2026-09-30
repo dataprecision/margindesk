@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { resolvePersonIdByEmail } from "@/lib/people/resolve-person";
 import { withAuth } from "@/lib/auth/protect-route";
 
 
@@ -125,13 +126,12 @@ export const POST = withAuth(async (req, { user }) => {
     }
 
     // Check if person already exists
-    const existing = await prisma.person.findUnique({
-      where: { email: body.email },
-    });
+    // Includes aliases and the .in/.com twin of the same mailbox
+    const existing = await resolvePersonIdByEmail(body.email);
 
     if (existing) {
       return NextResponse.json(
-        { error: "Person with this email already exists" },
+        { error: "Person with this email (or its .in/.com alias) already exists" },
         { status: 400 }
       );
     }
