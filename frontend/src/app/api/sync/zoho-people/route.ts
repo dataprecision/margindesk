@@ -379,8 +379,9 @@ async function syncEmployees(user: any, sinceMs: number | null = null) {
           where: { zoho_employee_id: zohoNumericId },
           include: {
             manager_history: {
-              where: { end_date: null }, // Get current open manager relationship
-              orderBy: { start_date: 'desc' },
+              // Latest relationship, open or closed. Looking only at open rows
+              // made every full sync re-create a closed row for each leaver.
+              orderBy: [{ start_date: 'desc' }, { created_at: 'desc' }],
               take: 1,
             },
           },
@@ -419,8 +420,8 @@ async function syncEmployees(user: any, sinceMs: number | null = null) {
           const managerChanged = !currentHistoryRecord || currentHistoryRecord.manager_id !== managerRecord.id;
 
           if (managerChanged) {
-            // Close old manager history record if exists
-            if (currentHistoryRecord) {
+            // Close old manager history record if it is still open
+            if (currentHistoryRecord && !currentHistoryRecord.end_date) {
               // Use employee's exit date if they've exited, otherwise use today
               const closeDate = personRecord.end_date || new Date();
               await prisma.managerHistory.update({
