@@ -22,6 +22,7 @@ export default function SalaryImportPage() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [month, setMonth] = useState<string>("");
+  const [allowAfterExit, setAllowAfterExit] = useState(false);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportStats | null>(null);
   const [error, setError] = useState("");
@@ -90,6 +91,7 @@ export default function SalaryImportPage() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("month", month);
+      formData.append("allow_after_exit", String(allowAfterExit));
 
       const response = await fetch("/api/import/salary", {
         method: "POST",
@@ -211,6 +213,23 @@ export default function SalaryImportPage() {
                 </p>
               )}
             </div>
+
+            {/* Full & final: allow rows for people who have already left */}
+            <label className="flex items-start gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={allowAfterExit}
+                onChange={(e) => setAllowAfterExit(e.target.checked)}
+                disabled={importing}
+                className="mt-0.5"
+              />
+              <span>
+                Includes full &amp; final settlements
+                <span className="block text-xs text-gray-500">
+                  Leave unticked for regular payroll: rows for people whose exit is before this month are skipped and listed below.
+                </span>
+              </span>
+            </label>
 
             {/* Import Button */}
             <button

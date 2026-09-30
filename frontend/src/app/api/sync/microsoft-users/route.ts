@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { resolvePersonIdByEmail } from "@/lib/people/resolve-person";
 import { withAdminRole } from "@/lib/auth/protect-route";
 
 
@@ -68,15 +69,18 @@ export const POST = withAdminRole(async (req, { user }) => {
         }
 
         // Check if person exists
-        const existingPerson = await prisma.person.findUnique({
-          where: { email: m365User.mail },
-        });
+        // Match on the M365 object id first, then email (aliases + .in/.com twin)
+        const existingPerson =
+          (await prisma.person.findUnique({ where: { microsoft_user_id: m365User.id } })) ??
+          (await resolvePersonIdByEmail(m365User.mail).then((id) =>
+            id ? prisma.person.findUnique({ where: { id } }) : null
+          ));
 
         if (existingPerson) {
           // Only update if not manually overridden
           if (!existingPerson.manual_ctc_override) {
             await prisma.person.update({
-              where: { email: m365User.mail },
+              where: { id: existingPerson.id },
               data: {
                 name: m365User.displayName,
                 microsoft_user_id: m365User.id,

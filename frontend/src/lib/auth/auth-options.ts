@@ -2,6 +2,7 @@ import { NextAuthOptions } from "next-auth";
 import AzureADProvider from "next-auth/providers/azure-ad";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
+import { resolvePersonIdByEmail } from "@/lib/people/resolve-person";
 import bcrypt from "bcryptjs";
 
 
@@ -76,8 +77,11 @@ export const authOptions: NextAuthOptions = {
       try {
         // For Microsoft OAuth, auto-create Person records
         if (account?.provider === "azure-ad") {
+          // Resolve via aliases / .in-.com twin before creating, so signing in
+          // with the other company domain does not spawn a duplicate Person.
+          const existingPersonId = await resolvePersonIdByEmail(user.email);
           await prisma.person.upsert({
-            where: { email: user.email },
+            where: existingPersonId ? { id: existingPersonId } : { email: user.email },
             update: {
               name: user.name || user.email,
               updated_at: new Date(),

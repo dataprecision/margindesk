@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { resolvePersonIdByEmail } from "@/lib/people/resolve-person";
 import { withAuth } from "@/lib/auth/protect-route";
 
 
@@ -9,10 +10,13 @@ import { withAuth } from "@/lib/auth/protect-route";
  */
 export const GET = withAuth(async (req, { user }) => {
   try {
-    const person = await prisma.person.findUnique({
-      where: { email: user.email },
-      select: { id: true, name: true, manager_id: true },
-    });
+    const personId = await resolvePersonIdByEmail(user.email);
+    const person = personId
+      ? await prisma.person.findUnique({
+          where: { id: personId },
+          select: { id: true, name: true, manager_id: true },
+        })
+      : null;
 
     return NextResponse.json({
       id: user.id,

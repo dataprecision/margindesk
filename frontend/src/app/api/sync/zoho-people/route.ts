@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { normalizeEmployeeCode, resolvePerson, resolvePersonIdByEmail } from "@/lib/people/resolve-person";
 import { withAdminRole } from "@/lib/auth/protect-route";
 import { getZohoPeopleAccessToken } from "@/lib/zoho/token-manager";
 
@@ -238,9 +239,20 @@ async function syncEmployees(user: any, sinceMs: number | null = null) {
 
         // Check if person already exists by email (primary identifier)
         console.log(`🔍 [Zoho People Sync] Looking up employee by email: ${emailId}`);
-        const existingPerson = await prisma.person.findUnique({
-          where: { email: emailId },
-        });
+        // Zoho ID is the stable identity; code and email (identifier map,
+        // .in/.com aliases) are fallbacks for records not yet linked.
+        const existingPersonId = await resolvePerson({ zohoId: zohoNumericId, employeeCode, email: emailId });
+        const resolvedPerson = existingPersonId
+          ? await prisma.person.findUnique({ where: { id: existingPersonId } })
+          : null;
+        // A match linked to another Zoho record with a *different* employee
+        // code is a rehire's previous employment — never overwrite it. Same
+        // code means HR re-created the Zoho record; relink it.
+        const isOtherEmployment =
+          !!resolvedPerson?.zoho_employee_id &&
+          resolvedPerson.zoho_employee_id !== zohoNumericId &&
+          normalizeEmployeeCode(resolvedPerson.employee_code ?? "") !== normalizeEmployeeCode(employeeCode ?? "");
+        const existingPerson = isOtherEmployment ? null : resolvedPerson;
         console.log(`📋 [Zoho People Sync] Lookup result: ${existingPerson ? `Found existing (ID: ${existingPerson.id})` : 'Not found - will create'}`);
 
         if (existingPerson) {
@@ -251,7 +263,7 @@ async function syncEmployees(user: any, sinceMs: number | null = null) {
 
           // Update existing person
           await prisma.person.update({
-            where: { email: emailId },
+            where: { id: existingPerson.id },
             data: {
               name: fullName || emailId,
               zoho_employee_id: zohoNumericId, // Update Zoho ID for existing employees
@@ -384,9 +396,10 @@ async function syncEmployees(user: any, sinceMs: number | null = null) {
         // Handle manager relationship for both active and exited employees
         if (reportingToEmail) {
           // Find manager by email
-          const managerRecord = await prisma.person.findUnique({
-            where: { email: reportingToEmail },
-          });
+          const managerId = await resolvePersonIdByEmail(reportingToEmail);
+          const managerRecord = managerId
+            ? await prisma.person.findUnique({ where: { id: managerId } })
+            : null;
 
           if (!managerRecord) {
             console.warn(`⚠️ [Zoho People Sync] Manager ${reportingToEmail} not found for employee ${employeeCode} (${personRecord.name})`);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { resolvePersonIdByEmail } from "@/lib/people/resolve-person";
 import { withAdminRole, withAuth } from "@/lib/auth/protect-route";
 import { buildTree, getDescendantOwnerIds } from "@/lib/pod-owner-tree";
 
@@ -19,10 +20,13 @@ export const GET = withAuth(async (req: NextRequest, { user }: { user: any }) =>
 
     // PM scoping: limit to their own subtree
     if (user.role !== "owner" && user.role !== "finance") {
-      const person = await prisma.person.findUnique({
-        where: { email: user.email },
-        select: { id: true },
-      });
+      const personId = await resolvePersonIdByEmail(user.email);
+      const person = personId
+        ? await prisma.person.findUnique({
+            where: { id: personId },
+            select: { id: true },
+          })
+        : null;
 
       if (!person) {
         return NextResponse.json({ owners: [] });

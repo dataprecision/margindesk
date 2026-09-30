@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { resolvePersonIdByEmail } from "@/lib/people/resolve-person";
 import { getDescendantOwnerIds } from "@/lib/pod-owner-tree";
 
 
@@ -19,16 +20,19 @@ export async function getPodIdsForUser(
   }
 
   // Find the Person record for this user
-  const person = await prisma.person.findUnique({
-    where: { email: userEmail },
-    select: {
-      id: true,
-      direct_reports: {
-        select: { id: true },
-        where: { end_date: null },
-      },
-    },
-  });
+  const personId = await resolvePersonIdByEmail(userEmail);
+  const person = personId
+    ? await prisma.person.findUnique({
+        where: { id: personId },
+        select: {
+          id: true,
+          direct_reports: {
+            select: { id: true },
+            where: { end_date: null },
+          },
+        },
+      })
+    : null;
 
   if (!person) {
     return [];
