@@ -113,7 +113,9 @@ function SettingsPageContent() {
     const authUrl = new URL(`${accountsUrl}/oauth/v2/auth`);
     authUrl.searchParams.set(
       "scope",
-      "ZohoBooks.settings.READ,ZohoBooks.contacts.READ,ZohoBooks.customerpayments.READ,ZohoBooks.expenses.READ,ZohoBooks.bills.READ,ZohoBooks.vendorpayments.READ,ZohoBooks.accountants.READ"
+      // Read-only. Invoices, estimates, credit notes and reports were added so
+      // billing can be checked against the contract register.
+      "ZohoBooks.settings.READ,ZohoBooks.contacts.READ,ZohoBooks.customerpayments.READ,ZohoBooks.expenses.READ,ZohoBooks.bills.READ,ZohoBooks.vendorpayments.READ,ZohoBooks.accountants.READ,ZohoBooks.invoices.READ,ZohoBooks.estimates.READ,ZohoBooks.creditnotes.READ,ZohoBooks.reports.READ"
     );
     authUrl.searchParams.set(
       "client_id",
@@ -467,12 +469,20 @@ function SettingsPageContent() {
 
               <div className="ml-4">
                 {zohoConnection.connected ? (
-                  <button
-                    onClick={handleDisconnectZoho}
-                    className="px-4 py-2 text-sm text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition"
-                  >
-                    Disconnect
-                  </button>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={handleConnectZoho}
+                      className="px-4 py-2 text-sm text-blue-700 border border-blue-300 rounded-lg hover:bg-blue-50 transition"
+                    >
+                      Reconnect
+                    </button>
+                    <button
+                      onClick={handleDisconnectZoho}
+                      className="px-4 py-2 text-sm text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition"
+                    >
+                      Disconnect
+                    </button>
+                  </div>
                 ) : (
                   <button
                     onClick={handleConnectZoho}
