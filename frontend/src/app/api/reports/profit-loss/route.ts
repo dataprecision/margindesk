@@ -124,9 +124,20 @@ export const GET = withAuth(async (req, { user }) => {
         cf_billed_for_month_unformatted: billMonthDate,
         include_in_calculation: true,
       },
+      include: {
+        reselling_allocations: { select: { allocated_amount: true } },
+      },
     });
 
-    const totalBills = bills.reduce((sum, b) => sum + Number(b.sub_total || b.total), 0);
+    // The part of a bill allocated to reselling invoices is counted under
+    // reselling OEM costs below, so it is left out of overheads here.
+    const totalBills = bills.reduce(
+      (sum, b) =>
+        sum +
+        Number(b.sub_total || b.total) -
+        b.reselling_allocations.reduce((s, a) => s + Number(a.allocated_amount), 0),
+      0
+    );
 
     // 5. Calculate Revenue from Project Costs
     // Using project_costs table which has monthly cost allocations
