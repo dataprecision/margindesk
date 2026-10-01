@@ -20,6 +20,7 @@ model Client {
   updated_at       DateTime   @updatedAt
   doc_spaces       DocSpace[]
   projects         Project[]
+  contracts        Contract[]
 
   @@index([name])
   @@index([zoho_contact_id])
@@ -50,6 +51,7 @@ model Project {
   project_hours      ProjectHours[]
   reselling_invoices ResellingInvoice[]
   timesheet_entries  TimesheetEntry[]
+  contract_lines     ContractLine[]
 
   @@index([client_id])
   @@index([status])
@@ -1121,6 +1123,7 @@ enum UserRole {
   finance
   pm
   readonly
+  legal
 }
 
 enum DetailsSyncStatus {
@@ -1135,4 +1138,128 @@ enum JobStatus {
   completed
   failed
   cancelled
+}
+
+// ---------------------------------------------------------------------------
+// Contract register: what gives DWAO the right to bill (or the duty to pay) a
+// counterparty. A Contract is the resolved, current position for one
+// counterparty; its lines are the individual billing terms, each traceable to
+// the clause it was read from. Rows are first loaded from documents and then
+// confirmed or corrected by the team.
+// ---------------------------------------------------------------------------
+model Contract {
+  id              String                  @id @default(cuid())
+  counterparty    String
+  client_id       String?
+  direction       ContractDirection       @default(customer)
+  basis           String // e.g. "Signed agreement + PO", "PO only", "Expired agreement, work continuing"
+  bill_to         String?
+  start_date      DateTime?
+  end_date        DateTime?
+  spoc            String? // person responsible for follow-up
+  stage           String                  @default("active") // active | renewal_in_progress | awaiting_signature | awaiting_po | closed
+  po_status       String?
+  notes           String?
+  open_questions  Json                    @default("[]") // [{ text, resolved }]
+  documents       Json? // documents read when the entry was loaded
+  source_key      String?                 @unique // stable key for re-loading from documents
+  loaded_at       DateTime?
+  verified        Boolean                 @default(false) // a person has checked the entry against the signed copy
+  verified_by     String?
+  verified_at     DateTime?
+  created_at      DateTime                @default(now())
+  updated_at      DateTime                @updatedAt
+  client          Client?                 @relation(fields: [client_id], references: [id])
+  lines           ContractLine[]
+  purchase_orders ContractPurchaseOrder[]
+  tasks           ContractTask[]
+
+  @@index([end_date])
+  @@index([client_id])
+  @@index([spoc])
+}
+
+model ContractLine {
+  id              String    @id @default(cuid())
+  contract_id     String
+  project_id      String?
+  service         String
+  billing_type    String // Hourly rate | Hours bundle | Per person / FTE | Fixed monthly fee | Milestone | ...
+  amount_text     String // as written in the document
+  amount          Decimal?  @db.Decimal(15, 2) // set when the amount is a single clean figure
+  unit            String?
+  currency        String    @default("INR")
+  start_date      DateTime?
+  end_date        DateTime?
+  date_note       String?
+  read_from       String    @default("Contract") // Contract | Purchase order | Unsigned draft
+  source_document String?
+  quote           String?
+  extra_rule      String?
+  verified        Boolean   @default(false)
+  sort_order      Int       @default(0)
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  contract        Contract  @relation(fields: [contract_id], references: [id], onDelete: Cascade)
+  project         Project?  @relation(fields: [project_id], references: [id])
+
+  @@index([contract_id])
+  @@index([end_date])
+  @@index([project_id])
+}
+
+model ContractPurchaseOrder {
+  id          String    @id @default(cuid())
+  contract_id String
+  po_number   String
+  po_date     DateTime?
+  valid_from  DateTime?
+  valid_to    DateTime?
+  value_text  String?
+  hours_text  String?
+  rate_text   String?
+  covers      String?
+  document    String?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  contract    Contract  @relation(fields: [contract_id], references: [id], onDelete: Cascade)
+
+  @@index([contract_id])
+  @@index([valid_to])
+}
+
+model ContractTask {
+  id           String             @id @default(cuid())
+  contract_id  String?
+  kind         String // renewal | purchase_order | invoice_deadline | follow_up | review
+  title        String
+  detail       String?
+  due_date     DateTime
+  owner        String?
+  status       ContractTaskStatus @default(open)
+  auto_key     String?            @unique // set on system-generated tasks so they are never duplicated
+  created_by   String?
+  completed_by String?
+  completed_at DateTime?
+  created_at   DateTime           @default(now())
+  updated_at   DateTime           @updatedAt
+  contract     Contract?          @relation(fields: [contract_id], references: [id], onDelete: Cascade)
+
+  @@index([due_date])
+  @@index([status, due_date])
+  @@index([owner])
+  @@index([contract_id])
+}
+
+enum ContractDirection {
+  customer // DWAO bills the counterparty
+  vendor // DWAO pays the counterparty
+  both
+  nda // confidentiality only, nothing to bill
+}
+
+enum ContractTaskStatus {
+  open
+  done
+  dismissed
 }

@@ -53,6 +53,18 @@ export default function AccessGuard({ children }: { children: React.ReactNode })
       return;
     }
 
+    // legal: the Contracts section only
+    if (role === "legal") {
+      const path = pathname || "";
+      if (path === "/contracts" || path.startsWith("/contracts/") || path.startsWith("/auth")) {
+        setAllowed(true);
+      } else {
+        setAllowed(false);
+        router.replace("/contracts");
+      }
+      return;
+    }
+
     // pm/readonly: check allowed paths
     if (!isAllowedForPM(pathname || "")) {
       setAllowed(false);
