@@ -19,6 +19,8 @@ interface ContractRow {
   days_left: number | null;
   line_count: number;
   next_line_end: string | null;
+  rule_count: number;
+  confirmed_rule_count: number;
   open_task_count: number;
   overdue_task_count: number;
   open_question_count: number;
@@ -132,7 +134,7 @@ export default function ContractsPage() {
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50">
             <tr>
-              {["Counterparty", "Based on", "Start", "End", "Days left", "Status", "SPOC", "Lines", "Follow-ups", "Checked"].map((h) => (
+              {["Counterparty", "Based on", "Start", "End", "Days left", "Status", "SPOC", "Billing rules", "Follow-ups", "Checked"].map((h) => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
               ))}
             </tr>
@@ -158,9 +160,9 @@ export default function ContractsPage() {
                   <td className="px-4 py-3 tabular-nums">{c.days_left ?? "—"}</td>
                   <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_STYLE[c.status]}`}>{c.status}</span></td>
                   <td className="px-4 py-3 text-gray-700">{c.spoc || "—"}</td>
-                  <td className="px-4 py-3 tabular-nums">
-                    {c.line_count}
-                    {c.next_line_end && <div className="text-xs text-gray-500 whitespace-nowrap">next ends {formatDate(c.next_line_end)}</div>}
+                  <td className="px-4 py-3 tabular-nums whitespace-nowrap">
+                    {c.rule_count ? `${c.confirmed_rule_count} of ${c.rule_count} confirmed` : "—"}
+                    {c.next_line_end && <div className="text-xs text-gray-500">next term ends {formatDate(c.next_line_end)}</div>}
                   </td>
                   <td className="px-4 py-3 tabular-nums">
                     {c.open_task_count || "—"}

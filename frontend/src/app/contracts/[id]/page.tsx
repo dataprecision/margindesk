@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { BILLING_TYPES, STAGES, STATUS_STYLE, formatDate, toDateInput, type ContractStatus } from "@/lib/contracts/status";
+import BillingRules, { type BillingRule } from "./billing-rules";
 
 interface Line {
   id: string;
@@ -73,6 +74,7 @@ interface Contract {
   lines: Line[];
   purchase_orders: PurchaseOrder[];
   tasks: Task[];
+  billing_rules: BillingRule[];
 }
 
 const emptyLine = { service: "", billing_type: "Fixed monthly fee", amount_text: "", unit: "per month", currency: "INR", start_date: "", end_date: "" };
@@ -235,10 +237,15 @@ export default function ContractDetailPage() {
         )}
       </section>
 
+      <BillingRules contractId={id} rules={contract.billing_rules ?? []} reload={load} />
+
       <section className="bg-white rounded-lg shadow">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Billing lines ({contract.lines.length})</h2>
-          {!newLine && <button onClick={() => setNewLine({ ...emptyLine })} className="text-sm font-medium text-blue-700 hover:underline">Add billing line</button>}
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Terms read from the agreement ({contract.lines.length})</h2>
+            <p className="text-xs text-gray-500 mt-1">What the documents say, with the clause each term comes from. Use these to check the billing rules above.</p>
+          </div>
+          {!newLine && <button onClick={() => setNewLine({ ...emptyLine })} className="text-sm font-medium text-blue-700 hover:underline">Add term</button>}
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -309,7 +316,7 @@ export default function ContractDetailPage() {
                 )
               )}
               {contract.lines.length === 0 && !newLine && (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">No billing lines. Add one to record what this contract lets us bill.</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">No terms recorded. The agreement for this counterparty has not been read yet.</td></tr>
               )}
               {newLine && (
                 <tr className="bg-blue-50">
