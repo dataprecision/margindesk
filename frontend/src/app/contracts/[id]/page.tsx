@@ -1,0 +1,427 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { BILLING_TYPES, STAGES, STATUS_STYLE, formatDate, toDateInput, type ContractStatus } from "@/lib/contracts/status";
+
+interface Line {
+  id: string;
+  service: string;
+  billing_type: string;
+  amount_text: string;
+  unit: string | null;
+  currency: string;
+  start_date: string | null;
+  end_date: string | null;
+  date_note: string | null;
+  read_from: string;
+  source_document: string | null;
+  quote: string | null;
+  extra_rule: string | null;
+  verified: boolean;
+  status: ContractStatus;
+  days_left: number | null;
+}
+
+interface PurchaseOrder {
+  id: string;
+  po_number: string;
+  po_date: string | null;
+  valid_from: string | null;
+  valid_to: string | null;
+  value_text: string | null;
+  hours_text: string | null;
+  rate_text: string | null;
+  covers: string | null;
+}
+
+interface Task {
+  id: string;
+  kind: string;
+  title: string;
+  detail: string | null;
+  due_date: string;
+  owner: string | null;
+  status: "open" | "done" | "dismissed";
+}
+
+interface Question {
+  text: string;
+  resolved?: boolean;
+}
+
+interface Contract {
+  id: string;
+  counterparty: string;
+  direction: string;
+  basis: string;
+  bill_to: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  spoc: string | null;
+  stage: string;
+  po_status: string | null;
+  notes: string | null;
+  open_questions: Question[];
+  verified: boolean;
+  verified_by: string | null;
+  verified_at: string | null;
+  loaded_at: string | null;
+  status: ContractStatus;
+  days_left: number | null;
+  lines: Line[];
+  purchase_orders: PurchaseOrder[];
+  tasks: Task[];
+}
+
+const emptyLine = { service: "", billing_type: "Fixed monthly fee", amount_text: "", unit: "per month", currency: "INR", start_date: "", end_date: "" };
+const inputClass = "w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500";
+
+export default function ContractDetailPage() {
+  const params = useParams();
+  const id = params.id as string;
+  const [contract, setContract] = useState<Contract | null>(null);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [editingHeader, setEditingHeader] = useState(false);
+  const [header, setHeader] = useState<Record<string, string>>({});
+  const [editingLine, setEditingLine] = useState<string | null>(null);
+  const [lineDraft, setLineDraft] = useState<Record<string, string>>({});
+  const [newLine, setNewLine] = useState<typeof emptyLine | null>(null);
+  const [newTask, setNewTask] = useState<{ title: string; due_date: string; owner: string } | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/contracts/${id}`);
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Failed to load contract");
+      setContract(data);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (id) load();
+  }, [id, load]);
+
+  const call = async (url: string, method: string, body?: unknown) => {
+    setSaving(true);
+    setError("");
+    try {
+      const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Save failed");
+      await load();
+      return true;
+    } catch (e: any) {
+      setError(e.message);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!contract) {
+    return <div className="container mx-auto px-4 py-8 text-gray-600">{error || "Loading contract…"}</div>;
+  }
+
+  const startHeaderEdit = () => {
+    setHeader({
+      counterparty: contract.counterparty,
+      basis: contract.basis,
+      direction: contract.direction,
+      bill_to: contract.bill_to ?? "",
+      start_date: toDateInput(contract.start_date),
+      end_date: toDateInput(contract.end_date),
+      spoc: contract.spoc ?? "",
+      stage: contract.stage,
+      po_status: contract.po_status ?? "",
+      notes: contract.notes ?? "",
+    });
+    setEditingHeader(true);
+  };
+
+  const questions = contract.open_questions || [];
+  const toggleQuestion = (index: number) =>
+    call(`/api/contracts/${id}`, "PATCH", { open_questions: questions.map((q, i) => (i === index ? { ...q, resolved: !q.resolved } : q)) });
+
+  const field = (label: string, value: React.ReactNode) => (
+    <div>
+      <dt className="text-xs uppercase tracking-wide text-gray-500">{label}</dt>
+      <dd className="mt-1 text-sm text-gray-900">{value}</dd>
+    </div>
+  );
+
+  return (
+    <div className="container mx-auto px-4 py-8 space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <Link href="/contracts" className="text-sm text-gray-600 hover:text-gray-900">← Contracts</Link>
+          <h1 className="text-3xl font-bold text-gray-900 mt-1">{contract.counterparty}</h1>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLE[contract.status]}`}>{contract.status}</span>
+            {contract.verified ? (
+              <span className="text-sm text-green-700">Checked by {contract.verified_by} on {formatDate(contract.verified_at)}</span>
+            ) : (
+              <span className="text-sm text-amber-700">Read from documents on {formatDate(contract.loaded_at)}. Not yet checked by a person.</span>
+            )}
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => call(`/api/contracts/${id}`, "PATCH", { verified: !contract.verified })}
+            disabled={saving}
+            className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium bg-white hover:bg-gray-50 disabled:opacity-50"
+          >
+            {contract.verified ? "Mark as not checked" : "Mark as checked"}
+          </button>
+          {!editingHeader && (
+            <button onClick={startHeaderEdit} className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700">Edit details</button>
+          )}
+        </div>
+      </div>
+
+      {error && <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">{error}</div>}
+
+      <section className="bg-white rounded-lg shadow p-6">
+        {editingHeader ? (
+          <form
+            className="grid grid-cols-1 md:grid-cols-3 gap-4"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (await call(`/api/contracts/${id}`, "PATCH", header)) setEditingHeader(false);
+            }}
+          >
+            <label className="text-sm text-gray-700">Counterparty<input className={inputClass} value={header.counterparty} onChange={(e) => setHeader({ ...header, counterparty: e.target.value })} required /></label>
+            <label className="text-sm text-gray-700">Based on<input className={inputClass} value={header.basis} onChange={(e) => setHeader({ ...header, basis: e.target.value })} required /></label>
+            <label className="text-sm text-gray-700">Type
+              <select className={inputClass} value={header.direction} onChange={(e) => setHeader({ ...header, direction: e.target.value })}>
+                <option value="customer">Customer (we bill)</option>
+                <option value="vendor">Vendor (we pay)</option>
+                <option value="both">Customer and vendor</option>
+                <option value="nda">NDA only</option>
+              </select>
+            </label>
+            <label className="text-sm text-gray-700">Contract start<input type="date" className={inputClass} value={header.start_date} onChange={(e) => setHeader({ ...header, start_date: e.target.value })} /></label>
+            <label className="text-sm text-gray-700">Contract end<input type="date" className={inputClass} value={header.end_date} onChange={(e) => setHeader({ ...header, end_date: e.target.value })} /></label>
+            <label className="text-sm text-gray-700">Stage
+              <select className={inputClass} value={header.stage} onChange={(e) => setHeader({ ...header, stage: e.target.value })}>
+                {STAGES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+            </label>
+            <label className="text-sm text-gray-700">SPOC<input className={inputClass} value={header.spoc} onChange={(e) => setHeader({ ...header, spoc: e.target.value })} /></label>
+            <label className="text-sm text-gray-700 md:col-span-2">Invoiced to<input className={inputClass} value={header.bill_to} onChange={(e) => setHeader({ ...header, bill_to: e.target.value })} /></label>
+            <label className="text-sm text-gray-700">Purchase order status<input className={inputClass} value={header.po_status} onChange={(e) => setHeader({ ...header, po_status: e.target.value })} /></label>
+            <label className="text-sm text-gray-700 md:col-span-2">Notes<textarea className={inputClass} rows={2} value={header.notes} onChange={(e) => setHeader({ ...header, notes: e.target.value })} /></label>
+            <div className="md:col-span-3 flex gap-2">
+              <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50">Save details</button>
+              <button type="button" onClick={() => setEditingHeader(false)} className="px-4 py-2 border border-gray-300 rounded-md text-sm">Cancel</button>
+            </div>
+          </form>
+        ) : (
+          <dl className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4">
+            {field("Contract start", formatDate(contract.start_date))}
+            {field("Contract end", <>{formatDate(contract.end_date)}{contract.days_left !== null && <span className="text-gray-500"> · {contract.days_left < 0 ? `${-contract.days_left} days ago` : `${contract.days_left} days left`}</span>}</>)}
+            {field("Based on", contract.basis)}
+            {field("Stage", STAGES.find((s) => s.value === contract.stage)?.label ?? contract.stage)}
+            {field("Type", { customer: "Customer (we bill)", vendor: "Vendor (we pay)", both: "Customer and vendor", nda: "NDA only" }[contract.direction] ?? contract.direction)}
+            {field("SPOC", contract.spoc || "—")}
+            {field("Purchase orders", contract.po_status || "—")}
+            {field("Invoiced to", contract.bill_to || "—")}
+            {contract.notes && <div className="col-span-2 md:col-span-4">{field("Notes", contract.notes)}</div>}
+          </dl>
+        )}
+      </section>
+
+      <section className="bg-white rounded-lg shadow">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900">Billing lines ({contract.lines.length})</h2>
+          {!newLine && <button onClick={() => setNewLine({ ...emptyLine })} className="text-sm font-medium text-blue-700 hover:underline">Add billing line</button>}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                {["Service", "Billing type", "Amount", "Start", "End", "Status", ""].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {contract.lines.map((l) =>
+                editingLine === l.id ? (
+                  <tr key={l.id} className="bg-blue-50">
+                    <td className="px-4 py-3"><input className={inputClass} value={lineDraft.service} onChange={(e) => setLineDraft({ ...lineDraft, service: e.target.value })} /></td>
+                    <td className="px-4 py-3">
+                      <select className={inputClass} value={lineDraft.billing_type} onChange={(e) => setLineDraft({ ...lineDraft, billing_type: e.target.value })}>
+                        {BILLING_TYPES.map((t) => <option key={t}>{t}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-4 py-3 space-y-1">
+                      <input className={inputClass} value={lineDraft.amount_text} onChange={(e) => setLineDraft({ ...lineDraft, amount_text: e.target.value })} placeholder="Amount" />
+                      <input className={inputClass} value={lineDraft.unit} onChange={(e) => setLineDraft({ ...lineDraft, unit: e.target.value })} placeholder="per month" />
+                    </td>
+                    <td className="px-4 py-3"><input type="date" className={inputClass} value={lineDraft.start_date} onChange={(e) => setLineDraft({ ...lineDraft, start_date: e.target.value })} /></td>
+                    <td className="px-4 py-3"><input type="date" className={inputClass} value={lineDraft.end_date} onChange={(e) => setLineDraft({ ...lineDraft, end_date: e.target.value })} /></td>
+                    <td className="px-4 py-3" colSpan={2}>
+                      <div className="flex gap-2">
+                        <button disabled={saving} onClick={async () => { if (await call(`/api/contracts/lines/${l.id}`, "PATCH", lineDraft)) setEditingLine(null); }} className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-medium disabled:opacity-50">Save</button>
+                        <button onClick={() => setEditingLine(null)} className="px-3 py-1 border border-gray-300 rounded text-xs">Cancel</button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={l.id} className="align-top">
+                    <td className="px-4 py-3 max-w-md">
+                      <div className="font-medium text-gray-900">{l.service}</div>
+                      <div className={`text-xs ${l.read_from === "Contract" ? "text-gray-500" : "text-amber-700 font-medium"}`}>Read from: {l.read_from}</div>
+                      {(l.source_document || l.quote || l.extra_rule) && (
+                        <details className="mt-1">
+                          <summary className="cursor-pointer text-xs text-blue-700">Clause and document</summary>
+                          <div className="mt-1 border-l-2 border-gray-200 pl-3 text-xs text-gray-600 space-y-1">
+                            {l.source_document && <div>{l.source_document}</div>}
+                            {l.quote && <div className="text-gray-900">“{l.quote}”</div>}
+                            {l.extra_rule && <div>Extra rule: {l.extra_rule}</div>}
+                          </div>
+                        </details>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">{l.billing_type}</td>
+                    <td className="px-4 py-3 tabular-nums">{l.currency} {l.amount_text}<div className="text-xs text-gray-500">{l.unit}</div></td>
+                    <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDate(l.start_date)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDate(l.end_date)}{l.date_note && <div className="text-xs text-gray-500 whitespace-normal max-w-[12rem]">{l.date_note}</div>}</td>
+                    <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_STYLE[l.status]}`}>{l.status}</span></td>
+                    <td className="px-4 py-3 whitespace-nowrap text-xs">
+                      <button
+                        onClick={() => {
+                          setLineDraft({ service: l.service, billing_type: l.billing_type, amount_text: l.amount_text, unit: l.unit ?? "", start_date: toDateInput(l.start_date), end_date: toDateInput(l.end_date) });
+                          setEditingLine(l.id);
+                        }}
+                        className="text-blue-700 hover:underline mr-3"
+                      >
+                        Edit
+                      </button>
+                      <button onClick={() => { if (window.confirm(`Delete the billing line "${l.service}"?`)) call(`/api/contracts/lines/${l.id}`, "DELETE"); }} className="text-red-600 hover:underline">Delete</button>
+                    </td>
+                  </tr>
+                )
+              )}
+              {contract.lines.length === 0 && !newLine && (
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">No billing lines. Add one to record what this contract lets us bill.</td></tr>
+              )}
+              {newLine && (
+                <tr className="bg-blue-50">
+                  <td className="px-4 py-3"><input className={inputClass} placeholder="Service" value={newLine.service} onChange={(e) => setNewLine({ ...newLine, service: e.target.value })} /></td>
+                  <td className="px-4 py-3">
+                    <select className={inputClass} value={newLine.billing_type} onChange={(e) => setNewLine({ ...newLine, billing_type: e.target.value })}>
+                      {BILLING_TYPES.map((t) => <option key={t}>{t}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-4 py-3 space-y-1">
+                    <input className={inputClass} placeholder="Amount" value={newLine.amount_text} onChange={(e) => setNewLine({ ...newLine, amount_text: e.target.value })} />
+                    <input className={inputClass} placeholder="per month" value={newLine.unit} onChange={(e) => setNewLine({ ...newLine, unit: e.target.value })} />
+                  </td>
+                  <td className="px-4 py-3"><input type="date" className={inputClass} value={newLine.start_date} onChange={(e) => setNewLine({ ...newLine, start_date: e.target.value })} /></td>
+                  <td className="px-4 py-3"><input type="date" className={inputClass} value={newLine.end_date} onChange={(e) => setNewLine({ ...newLine, end_date: e.target.value })} /></td>
+                  <td className="px-4 py-3" colSpan={2}>
+                    <div className="flex gap-2">
+                      <button disabled={saving} onClick={async () => { if (await call(`/api/contracts/${id}/lines`, "POST", { ...newLine, read_from: "Entered by hand" })) setNewLine(null); }} className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-medium disabled:opacity-50">Add</button>
+                      <button onClick={() => setNewLine(null)} className="px-3 py-1 border border-gray-300 rounded text-xs">Cancel</button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <section className="bg-white rounded-lg shadow">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">Follow-ups</h2>
+            {!newTask && <button onClick={() => setNewTask({ title: "", due_date: toDateInput(new Date()), owner: contract.spoc ?? "" })} className="text-sm font-medium text-blue-700 hover:underline">Add follow-up</button>}
+          </div>
+          <ul className="divide-y divide-gray-200">
+            {newTask && (
+              <li className="px-6 py-4 bg-blue-50 space-y-2">
+                <input className={inputClass} placeholder="What needs doing?" value={newTask.title} onChange={(e) => setNewTask({ ...newTask, title: e.target.value })} />
+                <div className="flex flex-wrap gap-2">
+                  <input type="date" className={`${inputClass} w-44`} value={newTask.due_date} onChange={(e) => setNewTask({ ...newTask, due_date: e.target.value })} />
+                  <input className={`${inputClass} w-44`} placeholder="Owner" value={newTask.owner} onChange={(e) => setNewTask({ ...newTask, owner: e.target.value })} />
+                  <button disabled={saving} onClick={async () => { if (await call("/api/contracts/tasks", "POST", { ...newTask, contract_id: id })) setNewTask(null); }} className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-medium disabled:opacity-50">Add</button>
+                  <button onClick={() => setNewTask(null)} className="px-3 py-1 border border-gray-300 rounded text-xs">Cancel</button>
+                </div>
+              </li>
+            )}
+            {contract.tasks.map((t) => (
+              <li key={t.id} className="px-6 py-4 flex items-start justify-between gap-4">
+                <div className={t.status === "open" ? "" : "opacity-60"}>
+                  <div className={`text-sm text-gray-900 ${t.status === "done" ? "line-through" : ""}`}>{t.title}</div>
+                  <div className="text-xs text-gray-500">Due {formatDate(t.due_date)}{t.owner ? ` · ${t.owner}` : ""}{t.status !== "open" ? ` · ${t.status}` : ""}</div>
+                  {t.detail && <div className="mt-1 text-xs text-gray-600 whitespace-pre-line">{t.detail}</div>}
+                </div>
+                <div className="flex gap-2 text-xs whitespace-nowrap">
+                  {t.status === "open" ? (
+                    <>
+                      <button onClick={() => call(`/api/contracts/tasks/${t.id}`, "PATCH", { status: "done" })} className="text-green-700 hover:underline">Done</button>
+                      <button onClick={() => call(`/api/contracts/tasks/${t.id}`, "PATCH", { status: "dismissed" })} className="text-gray-500 hover:underline">Dismiss</button>
+                    </>
+                  ) : (
+                    <button onClick={() => call(`/api/contracts/tasks/${t.id}`, "PATCH", { status: "open" })} className="text-blue-700 hover:underline">Reopen</button>
+                  )}
+                </div>
+              </li>
+            ))}
+            {contract.tasks.length === 0 && !newTask && <li className="px-6 py-8 text-center text-sm text-gray-500">No follow-ups for this contract.</li>}
+          </ul>
+        </section>
+
+        <section className="bg-white rounded-lg shadow">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">Open questions ({questions.filter((q) => !q.resolved).length})</h2>
+            <p className="text-xs text-gray-500 mt-1">What the documents leave unclear. Tick a question once it is settled.</p>
+          </div>
+          <ul className="divide-y divide-gray-200">
+            {questions.map((q, i) => (
+              <li key={i} className="px-6 py-3">
+                <label className="flex items-start gap-3 text-sm cursor-pointer">
+                  <input type="checkbox" className="mt-1" checked={!!q.resolved} disabled={saving} onChange={() => toggleQuestion(i)} />
+                  <span className={q.resolved ? "text-gray-400 line-through" : "text-gray-800"}>{q.text}</span>
+                </label>
+              </li>
+            ))}
+            {questions.length === 0 && <li className="px-6 py-8 text-center text-sm text-gray-500">No open questions.</li>}
+          </ul>
+        </section>
+      </div>
+
+      <section className="bg-white rounded-lg shadow">
+        <div className="px-6 py-4 border-b border-gray-200"><h2 className="text-lg font-semibold text-gray-900">Purchase orders ({contract.purchase_orders.length})</h2></div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <thead className="bg-gray-50">
+              <tr>{["PO number", "Dated", "Valid from", "Valid to", "Value", "Hours / quantity", "Covers"].map((h) => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>)}</tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {contract.purchase_orders.map((p) => (
+                <tr key={p.id} className="align-top">
+                  <td className="px-4 py-3 font-medium">{p.po_number}</td>
+                  <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDate(p.po_date)}</td>
+                  <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDate(p.valid_from)}</td>
+                  <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDate(p.valid_to)}</td>
+                  <td className="px-4 py-3">{p.value_text || "—"}</td>
+                  <td className="px-4 py-3">{p.hours_text || "—"}{p.rate_text && <div className="text-xs text-gray-500">{p.rate_text}</div>}</td>
+                  <td className="px-4 py-3 text-gray-600 max-w-md">{p.covers || "—"}</td>
+                </tr>
+              ))}
+              {contract.purchase_orders.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">No purchase orders on file.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
+}

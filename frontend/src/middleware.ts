@@ -50,6 +50,16 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // legal: the Contracts section only
+  if (role === "legal") {
+    if (pathname === "/contracts" || pathname.startsWith("/contracts/")) {
+      return NextResponse.next();
+    }
+    const url = req.nextUrl.clone();
+    url.pathname = "/contracts";
+    return NextResponse.redirect(url);
+  }
+
   // pm/readonly: check allowed paths
   if (!isAllowedForPM(pathname)) {
     const url = req.nextUrl.clone();

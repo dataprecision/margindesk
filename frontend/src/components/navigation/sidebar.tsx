@@ -32,6 +32,8 @@ export default function Sidebar() {
 
   const userRole = session.user?.role;
   const isPM = userRole === "pm";
+  const isLegal = userRole === "legal";
+  const seesContracts = userRole === "owner" || userRole === "finance" || isLegal;
 
   const allNavItems = [
     { href: "/dashboard", label: "Dashboard", icon: "📊", pmVisible: true },
@@ -46,9 +48,17 @@ export default function Sidebar() {
     { href: "/holidays", label: "Holidays", icon: "🎄", pmVisible: true },
   ];
 
-  const navItems = isPM
-    ? allNavItems.filter((item) => item.pmVisible)
-    : allNavItems;
+  const contractItems = [
+    { href: "/contracts", label: "Contracts", icon: "📑", pmVisible: false },
+    { href: "/contracts/tasks", label: "Contract Follow-ups", icon: "✅", pmVisible: false },
+  ];
+
+  // Legal users work only in the Contracts section
+  const navItems = isLegal
+    ? contractItems
+    : isPM
+      ? allNavItems.filter((item) => item.pmVisible)
+      : [...allNavItems, ...(seesContracts ? contractItems : [])];
 
   const settingsItems = [
     { href: "/settings/pod-owners", label: "Pod Owners", icon: "👑" },
@@ -66,9 +76,11 @@ export default function Sidebar() {
     { href: "/reports/reselling-profitability", label: "Reselling Report", icon: "💹", pmVisible: false },
   ];
 
-  const reportItems = isPM
-    ? allReportItems.filter((item) => item.pmVisible)
-    : allReportItems;
+  const reportItems = isLegal
+    ? []
+    : isPM
+      ? allReportItems.filter((item) => item.pmVisible)
+      : allReportItems;
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-white border-r border-gray-200 flex flex-col">
@@ -92,19 +104,21 @@ export default function Sidebar() {
         </div>
 
         {/* Reports Section */}
-        <div className="mt-6">
-          <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            Reports
+        {reportItems.length > 0 && (
+          <div className="mt-6">
+            <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Reports
+            </div>
+            <div className="space-y-1 mt-2">
+              {reportItems.map((item) => (
+                <Link key={item.href} href={item.href} className={navLinkClass(item.href)}>
+                  <span className="text-lg">{item.icon}</span>
+                  <span>{item.label}</span>
+                </Link>
+              ))}
+            </div>
           </div>
-          <div className="space-y-1 mt-2">
-            {reportItems.map((item) => (
-              <Link key={item.href} href={item.href} className={navLinkClass(item.href)}>
-                <span className="text-lg">{item.icon}</span>
-                <span>{item.label}</span>
-              </Link>
-            ))}
-          </div>
-        </div>
+        )}
       </nav>
 
       {/* User Profile & Settings */}
