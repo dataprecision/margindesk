@@ -52,6 +52,7 @@ model Project {
   reselling_invoices ResellingInvoice[]
   timesheet_entries  TimesheetEntry[]
   contract_lines     ContractLine[]
+  billing_rules      BillingRule[]
 
   @@index([client_id])
   @@index([status])
@@ -1163,6 +1164,7 @@ model Contract {
   open_questions  Json                    @default("[]") // [{ text, resolved }]
   documents       Json? // documents read when the entry was loaded
   source_key      String?                 @unique // stable key for re-loading from documents
+  zoho_customer_id String? // Zoho Books customer the contract is invoiced to
   loaded_at       DateTime?
   verified        Boolean                 @default(false) // a person has checked the entry against the signed copy
   verified_by     String?
@@ -1173,6 +1175,7 @@ model Contract {
   lines           ContractLine[]
   purchase_orders ContractPurchaseOrder[]
   tasks           ContractTask[]
+  billing_rules   BillingRule[]
 
   @@index([end_date])
   @@index([client_id])
@@ -1205,6 +1208,41 @@ model ContractLine {
 
   @@index([contract_id])
   @@index([end_date])
+  @@index([project_id])
+}
+
+// A billing rule is the computable form of a billing term: one shape (see
+// src/lib/billing/shapes.ts) plus its parameters. Rules are proposed from
+// invoices or contracts and only used for billing once a person confirms them.
+model BillingRule {
+  id           String            @id @default(cuid())
+  contract_id  String
+  project_id   String?
+  service      String // invoice item, e.g. "Adobe Analytics Consulting"
+  label        String? // what tells this rule apart within the service: a project, person or role
+  family       String?
+  shape        String // key into SHAPES; "unknown" until someone sets it
+  params       Json              @default("{}")
+  period       String            @default("monthly") // weekly | monthly | quarterly | yearly | one-time
+  currency     String            @default("INR")
+  fx_rate      Decimal?          @db.Decimal(12, 4) // exchange rate fixed by the contract, if any
+  start_date   DateTime?
+  end_date     DateTime?
+  source       String            @default("manual") // invoices | contract | manual
+  status       BillingRuleStatus @default(proposed)
+  confidence   String? // high | medium | low, for proposed rules
+  evidence     Json? // months billed, last invoice, last amount and wording
+  notes        String?
+  auto_key     String?           @unique // set on derived rules so a re-load updates rather than duplicates
+  confirmed_by String?
+  confirmed_at DateTime?
+  created_at   DateTime          @default(now())
+  updated_at   DateTime          @updatedAt
+  contract     Contract          @relation(fields: [contract_id], references: [id], onDelete: Cascade)
+  project      Project?          @relation(fields: [project_id], references: [id])
+
+  @@index([contract_id])
+  @@index([status])
   @@index([project_id])
 }
 
@@ -1256,6 +1294,12 @@ enum ContractDirection {
   vendor // DWAO pays the counterparty
   both
   nda // confidentiality only, nothing to bill
+}
+
+enum BillingRuleStatus {
+  proposed // derived, not yet checked by a person
+  confirmed // checked, can be used for billing
+  retired // no longer applies
 }
 
 enum ContractTaskStatus {

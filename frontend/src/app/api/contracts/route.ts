@@ -16,13 +16,14 @@ export const GET = withRole(CONTRACT_API_ROLES, async () => {
         lines: { select: { end_date: true, start_date: true } },
         purchase_orders: { select: { valid_to: true } },
         tasks: { where: { status: "open" }, select: { id: true, due_date: true } },
+        billing_rules: { where: { status: { not: "retired" } }, select: { status: true } },
       },
       orderBy: { counterparty: "asc" },
     });
 
     const today = new Date();
     return NextResponse.json({
-      contracts: contracts.map(({ lines, purchase_orders, tasks, open_questions, ...c }) => {
+      contracts: contracts.map(({ lines, purchase_orders, tasks, billing_rules, open_questions, ...c }) => {
         const upcoming = lines
           .map((l) => l.end_date)
           .filter((d): d is Date => !!d && d >= today)
@@ -35,6 +36,8 @@ export const GET = withRole(CONTRACT_API_ROLES, async () => {
           line_count: lines.length,
           next_line_end: upcoming[0] ?? null,
           po_count: purchase_orders.length,
+          rule_count: billing_rules.length,
+          confirmed_rule_count: billing_rules.filter((r) => r.status === "confirmed").length,
           open_task_count: tasks.length,
           overdue_task_count: tasks.filter((t) => t.due_date < today).length,
           open_question_count: questions.filter((q) => !q?.resolved).length,

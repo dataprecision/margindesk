@@ -17,6 +17,7 @@ export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { params }
         lines: { orderBy: [{ sort_order: "asc" }, { created_at: "asc" }], include: { project: { select: { id: true, name: true } } } },
         purchase_orders: { orderBy: [{ valid_to: "desc" }, { po_date: "desc" }] },
         tasks: { orderBy: [{ status: "asc" }, { due_date: "asc" }] },
+        billing_rules: { orderBy: [{ status: "asc" }, { service: "asc" }, { label: "asc" }] },
       },
     });
     if (!contract) return NextResponse.json({ error: "Contract not found" }, { status: 404 });
