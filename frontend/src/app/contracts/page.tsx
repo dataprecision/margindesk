@@ -90,9 +90,14 @@ export default function ContractsPage() {
           <h1 className="text-3xl font-bold text-gray-900">Contracts</h1>
           <p className="text-gray-600 mt-1">Every agreement that lets us bill a client or pay a vendor, with its dates and billing terms.</p>
         </div>
-        <Link href="/contracts/tasks" className="px-4 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700">
-          Follow-ups{overdue > 0 ? ` (${overdue} overdue)` : ""}
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/contracts/tasks" className="px-4 py-2 border border-gray-300 bg-white rounded-md font-medium hover:bg-gray-50">
+            Follow-ups{overdue > 0 ? ` (${overdue} overdue)` : ""}
+          </Link>
+          <Link href="/contracts/new" className="px-4 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700">
+            New contract
+          </Link>
+        </div>
       </div>
 
       {error && <div className="mb-4 rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">{error}</div>}

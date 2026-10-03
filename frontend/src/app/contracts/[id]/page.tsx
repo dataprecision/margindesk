@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { BUCKET_LABEL, BUCKET_STYLE, POINTER_LABEL, BILLING_TYPES, STAGES, STATUS_STYLE, formatDate, toDateInput, type ContractStatus, type ReviewBucket } from "@/lib/contracts/status";
 import BillingRules, { type BillingRule } from "./billing-rules";
+import ContractForm, { type ContractDocument, type ContractFormValues } from "@/components/contracts/contract-form";
 
 interface Line {
   id: string;
@@ -67,6 +68,9 @@ interface Contract {
   po_status: string | null;
   notes: string | null;
   open_questions: Question[];
+  client: { id: string; name: string } | null;
+  client_id: string | null;
+  documents: ContractDocument[] | null;
   review_bucket: ReviewBucket | null;
   review_pointers: Pointer[];
   read_file: string | null;
@@ -93,7 +97,7 @@ export default function ContractDetailPage() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [editingHeader, setEditingHeader] = useState(false);
-  const [header, setHeader] = useState<Record<string, string>>({});
+  const [header, setHeader] = useState<ContractFormValues | null>(null);
   const [editingLine, setEditingLine] = useState<string | null>(null);
   const [lineDraft, setLineDraft] = useState<Record<string, string>>({});
   const [newLine, setNewLine] = useState<typeof emptyLine | null>(null);
@@ -138,6 +142,7 @@ export default function ContractDetailPage() {
   const startHeaderEdit = () => {
     setHeader({
       counterparty: contract.counterparty,
+      client_id: contract.client_id ?? "",
       basis: contract.basis,
       direction: contract.direction,
       bill_to: contract.bill_to ?? "",
@@ -147,9 +152,11 @@ export default function ContractDetailPage() {
       stage: contract.stage,
       po_status: contract.po_status ?? "",
       notes: contract.notes ?? "",
+      documents: Array.isArray(contract.documents) ? contract.documents : [],
     });
     setEditingHeader(true);
   };
+  const documents = Array.isArray(contract.documents) ? contract.documents : [];
 
   const questions = contract.open_questions || [];
   const pointers = contract.review_pointers || [];
@@ -203,40 +210,14 @@ export default function ContractDetailPage() {
       {error && <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">{error}</div>}
 
       <section className="bg-white rounded-lg shadow p-6">
-        {editingHeader ? (
-          <form
-            className="grid grid-cols-1 md:grid-cols-3 gap-4"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (await call(`/api/contracts/${id}`, "PATCH", header)) setEditingHeader(false);
-            }}
-          >
-            <label className="text-sm text-gray-700">Counterparty<input className={inputClass} value={header.counterparty} onChange={(e) => setHeader({ ...header, counterparty: e.target.value })} required /></label>
-            <label className="text-sm text-gray-700">Based on<input className={inputClass} value={header.basis} onChange={(e) => setHeader({ ...header, basis: e.target.value })} required /></label>
-            <label className="text-sm text-gray-700">Type
-              <select className={inputClass} value={header.direction} onChange={(e) => setHeader({ ...header, direction: e.target.value })}>
-                <option value="customer">Customer (we bill)</option>
-                <option value="vendor">Vendor (we pay)</option>
-                <option value="both">Customer and vendor</option>
-                <option value="nda">NDA only</option>
-              </select>
-            </label>
-            <label className="text-sm text-gray-700">Contract start<input type="date" className={inputClass} value={header.start_date} onChange={(e) => setHeader({ ...header, start_date: e.target.value })} /></label>
-            <label className="text-sm text-gray-700">Contract end<input type="date" className={inputClass} value={header.end_date} onChange={(e) => setHeader({ ...header, end_date: e.target.value })} /></label>
-            <label className="text-sm text-gray-700">Stage
-              <select className={inputClass} value={header.stage} onChange={(e) => setHeader({ ...header, stage: e.target.value })}>
-                {STAGES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-              </select>
-            </label>
-            <label className="text-sm text-gray-700">SPOC<input className={inputClass} value={header.spoc} onChange={(e) => setHeader({ ...header, spoc: e.target.value })} /></label>
-            <label className="text-sm text-gray-700 md:col-span-2">Invoiced to<input className={inputClass} value={header.bill_to} onChange={(e) => setHeader({ ...header, bill_to: e.target.value })} /></label>
-            <label className="text-sm text-gray-700">Purchase order status<input className={inputClass} value={header.po_status} onChange={(e) => setHeader({ ...header, po_status: e.target.value })} /></label>
-            <label className="text-sm text-gray-700 md:col-span-2">Notes<textarea className={inputClass} rows={2} value={header.notes} onChange={(e) => setHeader({ ...header, notes: e.target.value })} /></label>
-            <div className="md:col-span-3 flex gap-2">
-              <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50">Save details</button>
-              <button type="button" onClick={() => setEditingHeader(false)} className="px-4 py-2 border border-gray-300 rounded-md text-sm">Cancel</button>
-            </div>
-          </form>
+        {editingHeader && header ? (
+          <ContractForm
+            initial={header}
+            mode="edit"
+            saving={saving}
+            onSave={async (values) => { const ok = await call(`/api/contracts/${id}`, "PATCH", values); if (ok) setEditingHeader(false); return ok; }}
+            onCancel={() => setEditingHeader(false)}
+          />
         ) : (
           <dl className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4">
             {field("Contract start", formatDate(contract.start_date))}
@@ -247,6 +228,21 @@ export default function ContractDetailPage() {
             {field("SPOC", contract.spoc || "—")}
             {field("Purchase orders", contract.po_status || "—")}
             {field("Invoiced to", contract.bill_to || "—")}
+            {field("Client in MarginDesk", contract.client ? contract.client.name : <span className="text-gray-400">Not linked</span>)}
+            {documents.length > 0 && (
+              <div className="col-span-2 md:col-span-4">
+                {field("Documents", (
+                  <ul className="space-y-0.5">
+                    {documents.map((d, i) => (
+                      <li key={i}>
+                        {d.uri && /^https?:/.test(d.uri) ? <a href={d.uri} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{d.name}</a> : d.name}
+                        {(d.type || d.date || d.signed != null) && <span className="text-xs text-gray-500"> · {[d.type, d.date, d.signed === true ? "signed" : d.signed === false ? "unsigned" : null].filter(Boolean).join(", ")}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                ))}
+              </div>
+            )}
             {contract.notes && <div className="col-span-2 md:col-span-4">{field("Notes", contract.notes)}</div>}
           </dl>
         )}

@@ -73,6 +73,10 @@ export const POST = withRole(CONTRACT_API_ROLES, async (req: Request, { user }) 
         spoc: body.spoc || null,
         notes: body.notes || null,
         client_id: body.client_id || null,
+        stage: typeof body.stage === "string" && body.stage ? body.stage : "active",
+        po_status: body.po_status || null,
+        documents: Array.isArray(body.documents) ? body.documents : undefined,
+        source_key: `manual:${Date.now().toString(36)}`,
       },
     });
     await audit(user, "Contract", contract.id, "create", undefined, contract);

@@ -1,0 +1,191 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { STAGES } from "@/lib/contracts/status";
+
+// One form for adding a contract by hand and for editing its details. Lists
+// come from what is already in the register (SPOCs, bases) and from the
+// client table, so names stay consistent across entries.
+
+export interface ContractDocument {
+  name: string;
+  uri?: string | null;
+  type?: string | null;
+  date?: string | null;
+  signed?: boolean | null;
+}
+
+export interface ContractFormValues {
+  counterparty: string;
+  client_id: string;
+  bill_to: string;
+  direction: string;
+  spoc: string;
+  basis: string;
+  stage: string;
+  start_date: string;
+  end_date: string;
+  po_status: string;
+  notes: string;
+  documents: ContractDocument[];
+}
+
+export const BASES = [
+  "Signed agreement",
+  "Signed agreement + PO",
+  "PO only",
+  "Expired agreement, work continuing",
+  "Unsigned draft",
+  "No paper found",
+];
+const PO_STATUSES = ["Required by the agreement", "Issued in practice", "Not used", "Awaiting PO"];
+const DIRECTIONS = [
+  { value: "customer", label: "Customer (we bill)" },
+  { value: "vendor", label: "Vendor (we pay)" },
+  { value: "both", label: "Customer and vendor" },
+  { value: "nda", label: "NDA only" },
+];
+const OTHER = "__other";
+
+export const emptyContract: ContractFormValues = {
+  counterparty: "", client_id: "", bill_to: "", direction: "customer", spoc: "", basis: "Signed agreement", stage: "active",
+  start_date: "", end_date: "", po_status: "", notes: "", documents: [],
+};
+
+const inputClass = "w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500";
+const labelClass = "block text-sm text-gray-700";
+
+export default function ContractForm({
+  initial,
+  mode,
+  saving,
+  onSave,
+  onCancel,
+}: {
+  initial: ContractFormValues;
+  mode: "new" | "edit";
+  saving: boolean;
+  onSave: (values: ContractFormValues) => Promise<boolean>;
+  onCancel: () => void;
+}) {
+  const [v, setV] = useState<ContractFormValues>(initial);
+  const [clients, setClients] = useState<{ id: string; name: string }[]>([]);
+  const [spocs, setSpocs] = useState<string[]>([]);
+  const [basisChoice, setBasisChoice] = useState(BASES.includes(initial.basis) ? initial.basis : initial.basis ? OTHER : BASES[0]);
+  const [newLinks, setNewLinks] = useState("");
+  const set = (patch: Partial<ContractFormValues>) => setV((x) => ({ ...x, ...patch }));
+
+  useEffect(() => {
+    fetch("/api/clients").then((r) => r.json()).then((d) => setClients((d.clients || []).map((c: any) => ({ id: c.id, name: c.name })).sort((a: any, b: any) => a.name.localeCompare(b.name)))).catch(() => {});
+    fetch("/api/contracts").then((r) => r.json()).then((d) => setSpocs(Array.from(new Set((d.contracts || []).map((c: any) => c.spoc).filter(Boolean))).sort() as string[])).catch(() => {});
+  }, []);
+
+  const clientName = useMemo(() => clients.find((c) => c.id === v.client_id)?.name ?? "", [clients, v.client_id]);
+  const [clientText, setClientText] = useState("");
+  useEffect(() => { if (clientName) setClientText(clientName); }, [clientName]);
+
+  const pickClient = (text: string) => {
+    setClientText(text);
+    const hit = clients.find((c) => c.name === text);
+    set({ client_id: hit ? hit.id : "" });
+    if (hit && !v.counterparty) set({ counterparty: hit.name, client_id: hit.id });
+  };
+
+  // "Name | https://..." or just a URL, one per line.
+  const parseLinks = (text: string): ContractDocument[] =>
+    text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
+      const [a, b] = l.split("|").map((s) => s.trim());
+      return b ? { name: a, uri: b, type: "Link" } : { name: a.replace(/^https?:\/\//, "").slice(0, 80), uri: a, type: "Link" };
+    });
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const basis = basisChoice === OTHER ? v.basis : basisChoice;
+    if (!basis.trim()) return;
+    await onSave({ ...v, basis: basis.trim(), documents: [...v.documents, ...parseLinks(newLinks)] });
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-6">
+      <fieldset className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <legend className="text-sm font-semibold text-gray-900 mb-3">Who</legend>
+        <label className={labelClass}>Counterparty (name on the contract)
+          <input className={inputClass} value={v.counterparty} onChange={(e) => set({ counterparty: e.target.value })} required />
+        </label>
+        <label className={labelClass}>Client in MarginDesk
+          <input className={inputClass} list="contract-form-clients" value={clientText} onChange={(e) => pickClient(e.target.value)} placeholder="Start typing a client name" />
+          <datalist id="contract-form-clients">{clients.map((c) => <option key={c.id} value={c.name} />)}</datalist>
+          <span className="text-xs text-gray-500">{v.client_id ? "Linked; projects and invoices of this client belong here." : clientText ? "No client with exactly this name; leave blank or pick from the list." : "Optional. Links the contract to the client's projects."}</span>
+        </label>
+        <label className={labelClass}>Invoiced to (legal entity on the invoice)
+          <input className={inputClass} value={v.bill_to} onChange={(e) => set({ bill_to: e.target.value })} placeholder="Same as counterparty if blank" />
+        </label>
+        <label className={labelClass}>Type
+          <select className={inputClass} value={v.direction} onChange={(e) => set({ direction: e.target.value })}>
+            {DIRECTIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+          </select>
+        </label>
+        <label className={labelClass}>SPOC (who follows this up)
+          <input className={inputClass} list="contract-form-spocs" value={v.spoc} onChange={(e) => set({ spoc: e.target.value })} />
+          <datalist id="contract-form-spocs">{spocs.map((s) => <option key={s} value={s} />)}</datalist>
+        </label>
+      </fieldset>
+
+      <fieldset className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <legend className="text-sm font-semibold text-gray-900 mb-3">Paper</legend>
+        <label className={labelClass}>Based on
+          <select className={inputClass} value={basisChoice} onChange={(e) => setBasisChoice(e.target.value)}>
+            {BASES.map((b) => <option key={b} value={b}>{b}</option>)}
+            {!BASES.includes(initial.basis) && initial.basis && <option value={OTHER}>{initial.basis}</option>}
+            {(BASES.includes(initial.basis) || !initial.basis) && <option value={OTHER}>Other…</option>}
+          </select>
+          {basisChoice === OTHER && <input className={`${inputClass} mt-2`} value={v.basis} onChange={(e) => set({ basis: e.target.value })} placeholder="Describe the paper" required />}
+        </label>
+        <label className={labelClass}>Stage
+          <select className={inputClass} value={v.stage} onChange={(e) => set({ stage: e.target.value })}>
+            {STAGES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+        </label>
+        <label className={labelClass}>Contract start
+          <input type="date" className={inputClass} value={v.start_date} onChange={(e) => set({ start_date: e.target.value })} />
+        </label>
+        <label className={labelClass}>Contract end
+          <input type="date" className={inputClass} value={v.end_date} onChange={(e) => set({ end_date: e.target.value })} />
+          <span className="text-xs text-gray-500">Leave blank if the agreement has no end date.</span>
+        </label>
+        <label className={labelClass}>Purchase orders
+          <input className={inputClass} list="contract-form-po" value={v.po_status} onChange={(e) => set({ po_status: e.target.value })} placeholder="Required, issued in practice, not used…" />
+          <datalist id="contract-form-po">{PO_STATUSES.map((s) => <option key={s} value={s} />)}</datalist>
+        </label>
+        <label className={`${labelClass} md:col-span-2`}>Notes
+          <textarea className={inputClass} rows={2} value={v.notes} onChange={(e) => set({ notes: e.target.value })} />
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend className="text-sm font-semibold text-gray-900 mb-3">Documents</legend>
+        {v.documents.length > 0 && (
+          <ul className="mb-3 space-y-1 text-sm">
+            {v.documents.map((d, i) => (
+              <li key={i} className="flex items-center gap-2">
+                <span className="text-gray-800">{d.uri && /^https?:/.test(d.uri) ? <a href={d.uri} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{d.name}</a> : d.name}</span>
+                {d.type && <span className="text-xs text-gray-500">{d.type}{d.date ? `, ${d.date}` : ""}{d.signed === true ? ", signed" : d.signed === false ? ", unsigned" : ""}</span>}
+                <button type="button" onClick={() => set({ documents: v.documents.filter((_, j) => j !== i) })} className="ml-auto text-xs text-gray-400 hover:text-red-600">remove</button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <label className={labelClass}>Add links (one per line, as “Name | link” or just the link)
+          <textarea className={inputClass} rows={2} value={newLinks} onChange={(e) => setNewLinks(e.target.value)} placeholder="MSA signed 2026 | https://dwao.sharepoint.com/..." />
+        </label>
+      </fieldset>
+
+      <div className="flex gap-2 pt-2 border-t border-gray-200">
+        <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+          {mode === "new" ? "Create contract" : "Save details"}
+        </button>
+        <button type="button" onClick={onCancel} className="px-4 py-2 border border-gray-300 rounded-md text-sm">Cancel</button>
+      </div>
+    </form>
+  );
+}
