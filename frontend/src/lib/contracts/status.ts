@@ -66,3 +66,27 @@ export const STATUS_STYLE: Record<ContractStatus, string> = {
   "Starts later": "bg-indigo-100 text-indigo-700",
   "In force": "bg-green-100 text-green-700",
 };
+
+// Review buckets set when the contract reads were loaded: what a person must do
+// before the contract can drive estimates.
+export type ReviewBucket = "clean" | "open" | "document_awaited";
+export const BUCKET_ORDER: ReviewBucket[] = ["clean", "open", "document_awaited"];
+export const BUCKET_LABEL: Record<ReviewBucket, string> = {
+  clean: "Clean: ready to confirm",
+  open: "Open pointers to close",
+  document_awaited: "Document awaited",
+};
+export const BUCKET_STYLE: Record<ReviewBucket, string> = {
+  clean: "bg-green-100 text-green-700",
+  open: "bg-amber-100 text-amber-800",
+  document_awaited: "bg-red-100 text-red-700",
+};
+export const POINTER_LABEL: Record<string, string> = {
+  paper: "No contract in effect",
+  difference: "Invoice differs from the contract",
+  contract_silent: "Invoiced, contract silent",
+  incomplete: "Number missing",
+  unreadable: "Signed copy unreadable",
+  register: "Two readings disagree",
+  uninvoiced: "In the contract, not invoiced",
+};

@@ -23,7 +23,8 @@ export const GET = withRole(CONTRACT_API_ROLES, async () => {
 
     const today = new Date();
     return NextResponse.json({
-      contracts: contracts.map(({ lines, purchase_orders, tasks, billing_rules, open_questions, ...c }) => {
+      contracts: contracts.map(({ lines, purchase_orders, tasks, billing_rules, open_questions, review_pointers, ...c }) => {
+        const pointers = Array.isArray(review_pointers) ? (review_pointers as any[]) : [];
         const upcoming = lines
           .map((l) => l.end_date)
           .filter((d): d is Date => !!d && d >= today)
@@ -41,6 +42,7 @@ export const GET = withRole(CONTRACT_API_ROLES, async () => {
           open_task_count: tasks.length,
           overdue_task_count: tasks.filter((t) => t.due_date < today).length,
           open_question_count: questions.filter((q) => !q?.resolved).length,
+          open_pointer_count: pointers.filter((p) => !p?.resolved && p?.kind !== "uninvoiced").length,
         };
       }),
     });

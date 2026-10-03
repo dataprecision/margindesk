@@ -16,7 +16,13 @@ export interface BillingRule {
   source: string;
   status: "proposed" | "confirmed" | "retired";
   confidence: string | null;
-  evidence: { form?: string; months_billed?: string[]; last_invoice?: string; last_month?: string; last_amount?: number; last_wording?: string; notes?: string[] } | null;
+  evidence: {
+    form?: string; months_billed?: string[]; last_invoice?: string; last_month?: string; last_amount?: number; last_wording?: string; notes?: string[];
+    // set on rules read from the contract
+    quote?: string; document?: string; page?: string; read_from?: string; input_needed?: string; advance_or_arrears?: string; unclear?: string[]; complete?: boolean;
+    // set on invoice-derived rules once the contract was read
+    contract_verdict?: string;
+  } | null;
   notes: string | null;
   confirmed_by: string | null;
 }
@@ -244,6 +250,22 @@ export default function BillingRules({ contractId, rules, reload }: { contractId
                       </div>
                       <div className="text-gray-900">“{r.evidence.last_wording}”</div>
                       {r.evidence.notes?.map((n, i) => <div key={i}>{n}</div>)}
+                    </div>
+                  )}
+                  {r.evidence?.quote && (
+                    <div className="border-l-2 border-green-200 pl-3 text-xs text-gray-600 space-y-1">
+                      <div>
+                        {r.evidence.document}{r.evidence.page ? `, ${r.evidence.page}` : ""}{r.evidence.read_from ? ` (${r.evidence.read_from})` : ""}
+                      </div>
+                      <div className="text-gray-900">“{r.evidence.quote}”</div>
+                      {r.evidence.input_needed && <div>Needs each period: {r.evidence.input_needed}</div>}
+                      {r.evidence.advance_or_arrears && <div>Billed {r.evidence.advance_or_arrears}</div>}
+                      {r.evidence.unclear?.map((n, i) => <div key={i} className="text-amber-700">{n}</div>)}
+                    </div>
+                  )}
+                  {r.evidence?.contract_verdict && (
+                    <div className={`mt-2 text-xs font-medium ${r.evidence.contract_verdict.startsWith("agrees") ? "text-green-700" : "text-amber-700"}`}>
+                      Contract read: {r.evidence.contract_verdict}
                     </div>
                   )}
                   {r.params?.notes_from_invoice && <div className="mt-2 text-xs text-gray-600">From the invoice: {r.params.notes_from_invoice}</div>}
