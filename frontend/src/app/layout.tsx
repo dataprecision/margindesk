@@ -20,7 +20,7 @@ export default function RootLayout({
         <SessionProvider>
           <div className="flex h-screen overflow-hidden">
             <Sidebar />
-            <main className="flex-1 ml-64 overflow-y-auto bg-gray-50">
+            <main className="flex-1 min-w-0 overflow-y-auto bg-gray-50">
               <AccessGuard>{children}</AccessGuard>
             </main>
           </div>
