@@ -81,9 +81,20 @@ for (const m of manifest) {
   if (!contract && m.zoho_ids[0]) contract = await prisma.contract.findFirst({ where: { zoho_customer_id: m.zoho_ids[0] }, include: { lines: { select: { id: true } }, purchase_orders: true } });
   const fromInvoicesOnly = contract?.basis?.startsWith(INVOICE_BASIS) ?? true;
   const start = iso(m.start), end = iso(m.end);
+  // One register row can hold two files (the services contract and the GA360 / DV360 one):
+  // the row keeps the stricter bucket and the pointers of both.
+  const SEVERITY = { clean: 0, open: 1, document_awaited: 2 };
+  const otherFile = contract?.read_file && !contract.read_file.split("+").includes(m.key) ? contract.read_file : null;
+  const bucket = otherFile && SEVERITY[contract.review_bucket] > SEVERITY[m.bucket] ? contract.review_bucket : m.bucket;
+  if (otherFile) {
+    const mine = new Set(pointers.map((p) => p.text));
+    for (const p of Array.isArray(contract.review_pointers) ? contract.review_pointers : []) if (!mine.has(p?.text)) pointers.push(p);
+  }
   const data = {
-    review_bucket: m.bucket, read_file: m.key, read_at: iso(m.read_at?.slice(0, 10)) ?? TODAY,
-    documents: m.documents, zoho_customer_id: contract?.zoho_customer_id ?? m.zoho_ids[0] ?? null,
+    review_bucket: bucket, read_file: otherFile ? `${otherFile}+${m.key}` : contract?.read_file?.split("+").includes(m.key) ? contract.read_file : m.key,
+    read_at: iso(m.read_at?.slice(0, 10)) ?? TODAY,
+    documents: otherFile ? [...(Array.isArray(contract.documents) ? contract.documents : []), ...m.documents] : m.documents,
+    zoho_customer_id: contract?.zoho_customer_id ?? m.zoho_ids[0] ?? null,
   };
   if (contract) {
     if (fromInvoicesOnly) Object.assign(data, { basis: m.basis ?? contract.basis, start_date: start, end_date: end, bill_to: m.bill_to ?? contract.bill_to });
@@ -120,12 +131,12 @@ for (const m of manifest) {
     const note = `Terms for this entity are recorded under "${contract.counterparty ?? m.customer}" (file ${m.key}).`;
     stats.secondaryRows = (stats.secondaryRows ?? 0) + 1;
     if (apply) await prisma.contract.update({ where: { id: other.id }, data: {
-      review_bucket: m.bucket, read_file: m.key, read_at: data.read_at, basis: fromInvoicesOnly ? (m.basis ?? undefined) : undefined,
+      review_bucket: bucket, read_file: m.key, read_at: data.read_at, basis: fromInvoicesOnly ? (m.basis ?? undefined) : undefined,
       review_pointers: [{ kind: "register", text: note, big: false, resolved: false }],
       notes: (other.notes ?? "").includes(note) ? other.notes : [other.notes, note].filter(Boolean).join("\n"),
     } });
   }
-  stats.byBucket[m.bucket] = (stats.byBucket[m.bucket] ?? 0) + 1;
+  stats.byBucket[bucket] = (stats.byBucket[bucket] ?? 0) + 1;
 
   // 2. Billing rules from the contract, one per billed service.
   for (const [i, l] of lines.entries()) {
@@ -196,9 +207,9 @@ for (const m of manifest) {
 
   // 6. One task per contract so the work lands on someone's list.
   const blocking = pointers.filter((p) => ["difference", "contract_silent", "incomplete", "unreadable", "register"].includes(p.kind) && !p.resolved);
-  const task = m.bucket === "document_awaited"
+  const task = bucket === "document_awaited"
     ? { auto_key: `document:${contract.id}`, kind: "document", title: `Contract document awaited: ${contract.counterparty ?? m.customer}`, detail: `${m.status_today ?? "no contract in effect"}. Upload the signed agreement, renewal or current PO to the contract folder, then re-check the entry.` }
-    : m.bucket === "open"
+    : bucket === "open"
     ? { auto_key: `review:${contract.id}`, kind: "review", title: `Open pointers to close: ${contract.counterparty ?? m.customer} (${blocking.length})`, detail: blocking.slice(0, 5).map((p) => `- ${p.text}`).join("\n").slice(0, 2000) }
     : null;
   if (task) {
