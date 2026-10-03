@@ -40,6 +40,7 @@ export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { params }
 });
 
 const TEXT_FIELDS = ["counterparty", "basis", "bill_to", "spoc", "stage", "po_status", "notes", "direction"] as const;
+const REVIEW_BUCKETS = ["clean", "open", "document_awaited"];
 
 /**
  * PATCH /api/contracts/[id]
@@ -60,6 +61,11 @@ export const PATCH = withRole(CONTRACT_API_ROLES, async (req: Request, { user, p
     if ("end_date" in body) data.end_date = parseDate(body.end_date);
     if ("client_id" in body) data.client_id = body.client_id || null;
     if ("open_questions" in body && Array.isArray(body.open_questions)) data.open_questions = body.open_questions;
+    if ("review_pointers" in body && Array.isArray(body.review_pointers)) data.review_pointers = body.review_pointers;
+    if ("review_bucket" in body) {
+      if (body.review_bucket !== null && !REVIEW_BUCKETS.includes(body.review_bucket)) return NextResponse.json({ error: "Unknown review bucket" }, { status: 400 });
+      data.review_bucket = body.review_bucket;
+    }
     if ("verified" in body) {
       data.verified = !!body.verified;
       data.verified_by = body.verified ? user.name || user.email : null;

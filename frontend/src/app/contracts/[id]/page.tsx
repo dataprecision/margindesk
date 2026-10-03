@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { BILLING_TYPES, STAGES, STATUS_STYLE, formatDate, toDateInput, type ContractStatus } from "@/lib/contracts/status";
+import { BUCKET_LABEL, BUCKET_STYLE, POINTER_LABEL, BILLING_TYPES, STAGES, STATUS_STYLE, formatDate, toDateInput, type ContractStatus, type ReviewBucket } from "@/lib/contracts/status";
 import BillingRules, { type BillingRule } from "./billing-rules";
 
 interface Line {
@@ -52,6 +52,8 @@ interface Question {
   resolved?: boolean;
 }
 
+interface Pointer { kind: string; text: string; big?: boolean; resolved?: boolean }
+
 interface Contract {
   id: string;
   counterparty: string;
@@ -65,6 +67,10 @@ interface Contract {
   po_status: string | null;
   notes: string | null;
   open_questions: Question[];
+  review_bucket: ReviewBucket | null;
+  review_pointers: Pointer[];
+  read_file: string | null;
+  read_at: string | null;
   verified: boolean;
   verified_by: string | null;
   verified_at: string | null;
@@ -146,6 +152,10 @@ export default function ContractDetailPage() {
   };
 
   const questions = contract.open_questions || [];
+  const pointers = contract.review_pointers || [];
+  const openPointers = pointers.filter((p) => !p.resolved && p.kind !== "uninvoiced");
+  const togglePointer = (index: number) =>
+    call(`/api/contracts/${id}`, "PATCH", { review_pointers: pointers.map((p, i) => (i === index ? { ...p, resolved: !p.resolved } : p)) });
   const toggleQuestion = (index: number) =>
     call(`/api/contracts/${id}`, "PATCH", { open_questions: questions.map((q, i) => (i === index ? { ...q, resolved: !q.resolved } : q)) });
 
@@ -164,6 +174,11 @@ export default function ContractDetailPage() {
           <h1 className="text-3xl font-bold text-gray-900 mt-1">{contract.counterparty}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLE[contract.status]}`}>{contract.status}</span>
+            {contract.review_bucket && (
+              <span className={`px-2 py-1 rounded-full text-xs font-medium ${BUCKET_STYLE[contract.review_bucket]}`}>
+                {BUCKET_LABEL[contract.review_bucket]}{contract.review_bucket === "open" ? ` (${openPointers.length})` : ""}
+              </span>
+            )}
             {contract.verified ? (
               <span className="text-sm text-green-700">Checked by {contract.verified_by} on {formatDate(contract.verified_at)}</span>
             ) : (
@@ -385,6 +400,33 @@ export default function ContractDetailPage() {
             {contract.tasks.length === 0 && !newTask && <li className="px-6 py-8 text-center text-sm text-gray-500">No follow-ups for this contract.</li>}
           </ul>
         </section>
+
+        {pointers.length > 0 && (
+          <section className="bg-white rounded-lg shadow">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Open pointers ({openPointers.length})</h2>
+              <p className="text-xs text-gray-500 mt-1">
+                Where the contract and our invoicing disagree, a number is missing, or the paper is not in effect. Tick a pointer once it is settled; the entry is clean when none are left.
+                {contract.read_at && ` Read from the documents on ${formatDate(contract.read_at)}.`}
+              </p>
+            </div>
+            <ul className="divide-y divide-gray-200">
+              {pointers.map((p, i) => (
+                <li key={i} className="px-6 py-3">
+                  <label className="flex items-start gap-3 text-sm cursor-pointer">
+                    <input type="checkbox" className="mt-1" checked={!!p.resolved} disabled={saving} onChange={() => togglePointer(i)} />
+                    <span className={p.resolved ? "text-gray-400 line-through" : "text-gray-800"}>
+                      <span className={`mr-2 px-1.5 py-0.5 rounded text-xs font-medium ${p.kind === "uninvoiced" ? "bg-blue-50 text-blue-700" : p.big ? "bg-red-100 text-red-700" : "bg-amber-50 text-amber-800"}`}>
+                        {POINTER_LABEL[p.kind] ?? p.kind}{p.big ? " · large account" : ""}
+                      </span>
+                      {p.text}
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <section className="bg-white rounded-lg shadow">
           <div className="px-6 py-4 border-b border-gray-200">

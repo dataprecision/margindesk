@@ -1169,6 +1169,10 @@ model Contract {
   verified        Boolean                 @default(false) // a person has checked the entry against the signed copy
   verified_by     String?
   verified_at     DateTime?
+  review_bucket   String? // clean | open | document_awaited, set when the contract reads were loaded
+  review_pointers Json                    @default("[]") // [{ kind, text, big, resolved }] - what a person must settle before billing
+  read_file       String? // contracts_v2 file the entry was loaded from
+  read_at         DateTime?
   created_at      DateTime                @default(now())
   updated_at      DateTime                @updatedAt
   client          Client?                 @relation(fields: [client_id], references: [id])
@@ -1180,6 +1184,7 @@ model Contract {
   @@index([end_date])
   @@index([client_id])
   @@index([spoc])
+  @@index([review_bucket])
 }
 
 model ContractLine {
@@ -1258,6 +1263,10 @@ model ContractPurchaseOrder {
   rate_text   String?
   covers      String?
   document    String?
+  value       Decimal?  @db.Decimal(15, 2) // numeric value before tax, when the document gives one
+  currency    String?
+  status      String? // valid | expired | no validity stated, as of the last read
+  auto_key    String?   @unique // set on loaded POs so a re-load updates rather than duplicates
   created_at  DateTime  @default(now())
   updated_at  DateTime  @updatedAt
   contract    Contract  @relation(fields: [contract_id], references: [id], onDelete: Cascade)

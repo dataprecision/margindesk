@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { STATUS_ORDER, STATUS_STYLE, formatDate, type ContractStatus } from "@/lib/contracts/status";
+import { BUCKET_LABEL, BUCKET_ORDER, BUCKET_STYLE, STATUS_ORDER, STATUS_STYLE, formatDate, type ContractStatus, type ReviewBucket } from "@/lib/contracts/status";
 
 interface ContractRow {
   id: string;
@@ -24,6 +24,8 @@ interface ContractRow {
   open_task_count: number;
   overdue_task_count: number;
   open_question_count: number;
+  review_bucket: ReviewBucket | null;
+  open_pointer_count: number;
 }
 
 const DIRECTION_LABEL: Record<ContractRow["direction"], string> = {
@@ -40,6 +42,7 @@ export default function ContractsPage() {
   const [status, setStatus] = useState<ContractStatus | "">("");
   const [direction, setDirection] = useState("");
   const [spoc, setSpoc] = useState("");
+  const [bucket, setBucket] = useState<ReviewBucket | "">("");
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -59,6 +62,12 @@ export default function ContractsPage() {
     return c;
   }, [contracts]);
 
+  const bucketCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    contracts.forEach((x) => { if (x.review_bucket) c[x.review_bucket] = (c[x.review_bucket] || 0) + 1; });
+    return c;
+  }, [contracts]);
+
   const spocs = useMemo(() => Array.from(new Set(contracts.map((c) => c.spoc).filter(Boolean))).sort() as string[], [contracts]);
 
   const visible = contracts
@@ -67,6 +76,7 @@ export default function ContractsPage() {
         (!status || c.status === status) &&
         (!direction || c.direction === direction) &&
         (!spoc || c.spoc === spoc) &&
+        (!bucket || c.review_bucket === bucket) &&
         (!search || `${c.counterparty} ${c.basis} ${c.spoc ?? ""}`.toLowerCase().includes(search.toLowerCase()))
     )
     .sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) || a.counterparty.localeCompare(b.counterparty));
@@ -107,6 +117,21 @@ export default function ContractsPage() {
         ))}
       </div>
 
+      {Object.keys(bucketCounts).length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {BUCKET_ORDER.filter((b) => bucketCounts[b]).map((b) => (
+            <button
+              key={b}
+              onClick={() => setBucket(bucket === b ? "" : b)}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium border ${BUCKET_STYLE[b]} ${bucket === b ? "ring-2 ring-offset-1 ring-blue-500 border-transparent" : "border-transparent"}`}
+            >
+              {BUCKET_LABEL[b]}: {bucketCounts[b]}
+            </button>
+          ))}
+          <span className="self-center text-xs text-gray-500">From the contract reading. Clean entries need only a lead and finance to confirm.</span>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-3 mb-4">
         <input
           type="search"
@@ -134,16 +159,16 @@ export default function ContractsPage() {
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50">
             <tr>
-              {["Counterparty", "Based on", "Start", "End", "Days left", "Status", "SPOC", "Billing rules", "Follow-ups", "Checked"].map((h) => (
+              {["Counterparty", "Based on", "Start", "End", "Days left", "Status", "Review", "SPOC", "Billing rules", "Follow-ups", "Checked"].map((h) => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {loading ? (
-              <tr><td colSpan={10} className="px-4 py-10 text-center text-gray-500">Loading contracts…</td></tr>
+              <tr><td colSpan={11} className="px-4 py-10 text-center text-gray-500">Loading contracts…</td></tr>
             ) : visible.length === 0 ? (
-              <tr><td colSpan={10} className="px-4 py-10 text-center text-gray-500">No contracts match these filters.</td></tr>
+              <tr><td colSpan={11} className="px-4 py-10 text-center text-gray-500">No contracts match these filters.</td></tr>
             ) : (
               visible.map((c) => (
                 <tr key={c.id} className="hover:bg-gray-50">
@@ -159,6 +184,15 @@ export default function ContractsPage() {
                   <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDate(c.end_date)}</td>
                   <td className="px-4 py-3 tabular-nums">{c.days_left ?? "—"}</td>
                   <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_STYLE[c.status]}`}>{c.status}</span></td>
+                  <td className="px-4 py-3">
+                    {c.review_bucket ? (
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${BUCKET_STYLE[c.review_bucket]}`}>
+                        {c.review_bucket === "clean" ? "Clean" : c.review_bucket === "open" ? `${c.open_pointer_count} to close` : "Document awaited"}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 text-xs">Not read</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-gray-700">{c.spoc || "—"}</td>
                   <td className="px-4 py-3 tabular-nums whitespace-nowrap">
                     {c.rule_count ? `${c.confirmed_rule_count} of ${c.rule_count} confirmed` : "—"}

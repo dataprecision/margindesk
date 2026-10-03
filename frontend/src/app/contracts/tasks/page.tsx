@@ -20,7 +20,8 @@ const KIND_LABEL: Record<string, string> = {
   purchase_order: "Purchase order",
   invoice_deadline: "Invoice deadline",
   follow_up: "Follow-up",
-  review: "Review",
+  review: "Open pointers",
+  document: "Document awaited",
 };
 
 const KIND_STYLE: Record<string, string> = {
@@ -28,7 +29,8 @@ const KIND_STYLE: Record<string, string> = {
   purchase_order: "bg-indigo-100 text-indigo-700",
   invoice_deadline: "bg-red-100 text-red-700",
   follow_up: "bg-gray-100 text-gray-700",
-  review: "bg-gray-100 text-gray-700",
+  review: "bg-amber-100 text-amber-800",
+  document: "bg-red-100 text-red-700",
 };
 
 const BUCKETS = ["Overdue", "Today", "Next 7 days", "Next 30 days", "Later"] as const;
