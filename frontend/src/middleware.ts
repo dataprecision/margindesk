@@ -52,7 +52,7 @@ export async function middleware(req: NextRequest) {
 
   // legal: the Contracts section only
   if (role === "legal") {
-    if (pathname === "/contracts" || pathname.startsWith("/contracts/")) {
+    if (pathname === "/contracts" || pathname.startsWith("/contracts/") || pathname === "/companies" || pathname.startsWith("/companies/")) {
       return NextResponse.next();
     }
     const url = req.nextUrl.clone();

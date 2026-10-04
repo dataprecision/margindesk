@@ -22,6 +22,7 @@ const KIND_LABEL: Record<string, string> = {
   follow_up: "Follow-up",
   review: "Open pointers",
   document: "Document awaited",
+  company_match: "Zoho match to confirm",
 };
 
 const KIND_STYLE: Record<string, string> = {
@@ -31,6 +32,7 @@ const KIND_STYLE: Record<string, string> = {
   follow_up: "bg-gray-100 text-gray-700",
   review: "bg-amber-100 text-amber-800",
   document: "bg-red-100 text-red-700",
+  company_match: "bg-blue-100 text-blue-800",
 };
 
 const BUCKETS = ["Overdue", "Today", "Next 7 days", "Next 30 days", "Later"] as const;

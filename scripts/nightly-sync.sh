@@ -47,4 +47,16 @@ run_sync() {
 log "=== Nightly sync started ==="
 run_sync "employees" "employees"
 run_sync "leaves"    "leaves"
+run_books_sync() {
+  local label="$1" sync_type="$2"
+  local body status
+  body="$(mktemp)"
+  status=$(curl -sS -o "$body" -w '%{http_code}' -X POST "$BASE_URL/api/sync/zoho" \
+    -H "Authorization: Bearer $CRON_SECRET" -H "Content-Type: application/json" --max-time 1500 \
+    -d "{\"syncType\":\"$sync_type\"}")
+  if [[ "$status" == "200" ]]; then log "$label OK: $(head -c 400 "$body")"; else log "$label FAILED (HTTP $status): $(head -c 600 "$body")"; fi
+  rm -f "$body"
+}
+run_books_sync "companies (Zoho Books contacts)" "contacts"
+run_books_sync "contact persons"                 "contact_persons"
 log "=== Nightly sync finished ==="

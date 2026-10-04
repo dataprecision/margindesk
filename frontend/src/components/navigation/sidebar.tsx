@@ -39,6 +39,7 @@ const GROUPS: NavGroup[] = [
     label: "Billing",
     icon: "billing",
     items: [
+      { href: "/companies", label: "Companies", roles: BILLING },
       { href: "/contracts", label: "Contracts", roles: BILLING, badge: "pointers" },
       { href: "/contracts/tasks", label: "Follow-ups", roles: BILLING, badge: "overdue" },
     ],

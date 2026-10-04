@@ -8,6 +8,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// A Client is any company we deal with: a customer, a vendor or both. Zoho
+// Books is the master for the company itself (name, tax ids, terms); roles,
+// escalation contacts and our own owners live only here. A row with no
+// zoho_contact_id is a placeholder for a contract signed before finance
+// created the Zoho record; the nightly sync proposes the match.
 model Client {
   id               String     @id @default(cuid())
   name             String
@@ -16,14 +21,59 @@ model Client {
   gstin            String?
   pan              String?
   tags             String[]   @default([])
+  contact_type     String? // customer | vendor, as Zoho has it; null for a placeholder
+  zoho_status      String? // active | inactive in Zoho
+  legal_name       String?
+  payment_terms    Int?
+  primary_email    String?
+  primary_phone    String?
+  website          String?
+  notes            String?
+  placeholder      Boolean    @default(false) // created here before the Zoho record existed
+  suggested_zoho_contact_id String? // nightly match for a placeholder, until a person confirms
+  owner_person_id  String? // our business owner for this company
+  legal_person_id  String? // our legal owner
+  finance_person_id String? // our finance / billing owner
   created_at       DateTime   @default(now())
   updated_at       DateTime   @updatedAt
   doc_spaces       DocSpace[]
   projects         Project[]
   contracts        Contract[]
+  people           ClientContact[]
+  owner_person     Person?    @relation("ClientOwner", fields: [owner_person_id], references: [id])
+  legal_person     Person?    @relation("ClientLegal", fields: [legal_person_id], references: [id])
+  finance_person   Person?    @relation("ClientFinance", fields: [finance_person_id], references: [id])
 
   @@index([name])
   @@index([zoho_contact_id])
+  @@index([contact_type])
+  @@index([placeholder])
+}
+
+// A person on the other side: who to write to for business, legal or billing
+// matters, and whom to escalate to. Seeded from Zoho's contact persons
+// (read-only); roles are set here.
+model ClientContact {
+  id                     String   @id @default(cuid())
+  client_id              String
+  zoho_contact_person_id String?  @unique
+  name                   String
+  designation            String?
+  department             String?
+  email                  String?
+  phone                  String?
+  mobile                 String?
+  is_primary             Boolean  @default(false)
+  roles                  String[] @default([]) // business | legal | accounts_billing | escalation_1 | escalation_2 | escalation_3
+  notes                  String?
+  source                 String   @default("manual") // zoho | manual
+  active                 Boolean  @default(true)
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+  client                 Client   @relation(fields: [client_id], references: [id], onDelete: Cascade)
+
+  @@index([client_id])
+  @@index([email])
 }
 
 model Project {
@@ -120,6 +170,9 @@ model Person {
   timesheet_entries   TimesheetEntry[]
   email_aliases       PersonEmailAlias[]
   contracts_as_spoc   Contract[]           @relation("ContractSpoc")
+  clients_owned       Client[]             @relation("ClientOwner")
+  clients_legal       Client[]             @relation("ClientLegal")
+  clients_finance     Client[]             @relation("ClientFinance")
   identifiers         PersonIdentifier[]
 
   @@index([email])
