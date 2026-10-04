@@ -22,6 +22,9 @@ export const POST = withAdminRole(async (req, { user }) => {
     if (syncType === "contacts") {
       return await syncContacts(user);
     }
+    if (syncType === "contact_persons") {
+      return await syncContactPersons(user, body.only_with_contracts !== false);
+    }
 
     return NextResponse.json(
       { error: "Invalid sync type. Use 'contacts' or 'cash_receipts'" },
@@ -264,8 +267,9 @@ async function syncContacts(user: any) {
               name: contact.company_name,
               billing_currency: contact.currency_code || "INR",
               gstin: contact.gst_no || undefined,
-              pan: contact.tax_id || undefined,
+              pan: contact.pan_no || contact.tax_id || undefined,
               tags: flattenedTags,
+              ...companyFields(contact),
             },
           });
           updatedCount++;
@@ -278,8 +282,9 @@ async function syncContacts(user: any) {
               zoho_contact_id: contact.contact_id,
               billing_currency: contact.currency_code || "INR",
               gstin: contact.gst_no || undefined,
-              pan: contact.tax_id || undefined,
+              pan: contact.pan_no || contact.tax_id || undefined,
               tags: flattenedTags,
+              ...companyFields(contact),
             },
           });
           createdCount++;
@@ -290,6 +295,8 @@ async function syncContacts(user: any) {
         errors.push(`Contact ${contact.contact_id}: ${error.message}`);
       }
     }
+
+    const matches = await proposePlaceholderMatches();
 
     // Create sync log
     const syncLog = await prisma.syncLog.create({
@@ -350,5 +357,95 @@ async function syncContacts(user: any) {
     });
 
     throw error;
+  }
+}
+
+
+/** Company facts Zoho holds that the register shows read-only. */
+function companyFields(contact: any) {
+  return {
+    contact_type: contact.contact_type || undefined,
+    zoho_status: contact.status || undefined,
+    payment_terms: Number.isFinite(Number(contact.payment_terms)) ? Number(contact.payment_terms) : undefined,
+    primary_email: contact.email || undefined,
+    primary_phone: contact.phone || contact.mobile || undefined,
+    website: contact.website || undefined,
+    placeholder: false,
+  };
+}
+
+const normName = (s: string) =>
+  s.toLowerCase().replace(/\b(private|pvt|limited|ltd|llp|inc|pte|co|company|the)\b\.?/g, "").replace(/[^a-z0-9]/g, "");
+
+/**
+ * A placeholder is a company created here before finance made the Zoho record.
+ * Once a Zoho contact with the same GSTIN, PAN or name exists, suggest it and
+ * raise a follow-up for finance to confirm the merge. Nothing is merged here.
+ */
+async function proposePlaceholderMatches() {
+  const placeholders = await prisma.client.findMany({ where: { placeholder: true, zoho_contact_id: null }, select: { id: true, name: true, gstin: true, pan: true, suggested_zoho_contact_id: true } });
+  if (placeholders.length === 0) return 0;
+  const synced = await prisma.client.findMany({ where: { zoho_contact_id: { not: null } }, select: { id: true, name: true, gstin: true, pan: true, zoho_contact_id: true } });
+  let proposed = 0;
+  for (const p of placeholders) {
+    const hit =
+      (p.gstin && synced.find((c) => c.gstin && c.gstin === p.gstin)) ||
+      (p.pan && synced.find((c) => c.pan && c.pan === p.pan)) ||
+      synced.find((c) => normName(c.name) === normName(p.name) && normName(p.name).length > 3);
+    if (!hit || hit.zoho_contact_id === p.suggested_zoho_contact_id) continue;
+    await prisma.client.update({ where: { id: p.id }, data: { suggested_zoho_contact_id: hit.zoho_contact_id } });
+    await prisma.contractTask.upsert({
+      where: { auto_key: `company-match:${p.id}` },
+      create: { auto_key: `company-match:${p.id}`, kind: "company_match", title: `Zoho record found for ${p.name}: confirm it is "${hit.name}"`, detail: "Open the company page and confirm the link; contracts and contacts move to the Zoho-backed record.", due_date: new Date(Date.now() + 7 * 86_400_000), owner: null, created_by: "zoho_contacts sync" },
+      update: { title: `Zoho record found for ${p.name}: confirm it is "${hit.name}"` },
+    });
+    proposed++;
+  }
+  return proposed;
+}
+
+/**
+ * Contact persons from Zoho Books (read-only), one call per company. Roles
+ * and escalation levels are set in MarginDesk and never overwritten here.
+ */
+async function syncContactPersons(user: any, onlyWithContracts: boolean) {
+  const started = new Date();
+  let companies = 0, created = 0, updated = 0, deactivated = 0;
+  const errors: string[] = [];
+  try {
+    const tokens = await getZohoAccessToken();
+    if (!tokens) throw new Error("Zoho Books not connected. Please connect in Settings.");
+    const clients = await prisma.client.findMany({
+      where: { zoho_contact_id: { not: null }, ...(onlyWithContracts ? { OR: [{ contracts: { some: {} } }, { projects: { some: {} } }] } : {}) },
+      select: { id: true, zoho_contact_id: true, name: true },
+    });
+    for (const client of clients) {
+      let res: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        res = await fetch(`${tokens.api_domain}/books/v3/contacts/${client.zoho_contact_id}/contactpersons?organization_id=${tokens.organization_id}`, { headers: { Authorization: `Zoho-oauthtoken ${tokens.access_token}` } });
+        if (res.status !== 429) break;
+        await new Promise((r) => setTimeout(r, 60_000));
+      }
+      if (!res || !res.ok) { errors.push(`${client.name}: HTTP ${res?.status}`); continue; }
+      const persons: any[] = (await res.json()).contact_persons ?? [];
+      companies++;
+      const seen: string[] = [];
+      for (const cp of persons) {
+        const name = [cp.salutation, cp.first_name, cp.last_name].filter(Boolean).join(" ").trim() || cp.email || "Contact";
+        const data = { name, designation: cp.designation || null, department: cp.department || null, email: cp.email || null, phone: cp.phone || null, mobile: cp.mobile || null, is_primary: !!cp.is_primary_contact, source: "zoho", active: true };
+        const existing = await prisma.clientContact.findUnique({ where: { zoho_contact_person_id: cp.contact_person_id } });
+        if (existing) { await prisma.clientContact.update({ where: { id: existing.id }, data }); updated++; }
+        else { await prisma.clientContact.create({ data: { ...data, client_id: client.id, zoho_contact_person_id: cp.contact_person_id } }); created++; }
+        seen.push(cp.contact_person_id);
+      }
+      const gone = await prisma.clientContact.updateMany({ where: { client_id: client.id, source: "zoho", active: true, zoho_contact_person_id: { notIn: seen } }, data: { active: false } });
+      deactivated += gone.count;
+      await new Promise((r) => setTimeout(r, 650)); // stay under Zoho's per-minute limit
+    }
+    await prisma.syncLog.create({ data: { sync_type: "zoho_contact_persons", status: errors.length ? "completed_with_errors" : "success", started_at: started, completed_at: new Date(), records_synced: created + updated, error_message: errors.length ? errors.slice(0, 20).join("; ") : undefined, metadata: { companies, created, updated, deactivated, triggered_by: user?.email } } });
+    return NextResponse.json({ success: true, companies, created, updated, deactivated, errors: errors.length });
+  } catch (error: any) {
+    await prisma.syncLog.create({ data: { sync_type: "zoho_contact_persons", status: "failed", started_at: started, completed_at: new Date(), error_message: error.message } });
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

@@ -56,7 +56,7 @@ export default function AccessGuard({ children }: { children: React.ReactNode })
     // legal: the Contracts section only
     if (role === "legal") {
       const path = pathname || "";
-      if (path === "/contracts" || path.startsWith("/contracts/") || path.startsWith("/auth")) {
+      if (path === "/contracts" || path.startsWith("/contracts/") || path === "/companies" || path.startsWith("/companies/") || path.startsWith("/auth")) {
         setAllowed(true);
       } else {
         setAllowed(false);

@@ -78,7 +78,7 @@ export default function ContractForm({
   const set = (patch: Partial<ContractFormValues>) => setV((x) => ({ ...x, ...patch }));
 
   useEffect(() => {
-    fetch("/api/clients").then((r) => r.json()).then((d) => setClients((d.clients || []).map((c: any) => ({ id: c.id, name: c.name })).sort((a: any, b: any) => a.name.localeCompare(b.name)))).catch(() => {});
+    fetch("/api/companies?all=true").then((r) => r.json()).then((d) => setClients((d.companies || []).map((c: any) => ({ id: c.id, name: c.name })).sort((a: any, b: any) => a.name.localeCompare(b.name)))).catch(() => {});
     fetch("/api/people")
       .then((r) => r.json())
       .then((d) => setPeople((Array.isArray(d) ? d : d.people || []).filter((p: any) => !p.end_date).map((p: any) => ({ id: p.id, name: p.name, email: p.email })).sort((a: any, b: any) => a.name.localeCompare(b.name))))
@@ -94,6 +94,21 @@ export default function ContractForm({
     const hit = clients.find((c) => c.name === text);
     set({ client_id: hit ? hit.id : "" });
     if (hit && !v.counterparty) set({ counterparty: hit.name, client_id: hit.id });
+  };
+
+  const [addingCompany, setAddingCompany] = useState(false);
+  const addCompany = async () => {
+    setAddingCompany(true);
+    try {
+      const r = await fetch("/api/companies", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: clientText, contact_type: v.direction === "vendor" ? "vendor" : "customer" }) });
+      const d = await r.json();
+      const company = d.company;
+      if (company) {
+        setClients((cs) => (cs.some((c) => c.id === company.id) ? cs : [...cs, { id: company.id, name: company.name }].sort((a, b) => a.name.localeCompare(b.name))));
+        setClientText(company.name);
+        set({ client_id: company.id, counterparty: v.counterparty || company.name });
+      }
+    } finally { setAddingCompany(false); }
   };
 
   // "Name | https://..." or just a URL, one per line.
@@ -118,10 +133,14 @@ export default function ContractForm({
         <label className={labelClass}>Counterparty (name on the contract)
           <input className={inputClass} value={v.counterparty} onChange={(e) => set({ counterparty: e.target.value })} required />
         </label>
-        <label className={labelClass}>Client in MarginDesk
-          <input className={inputClass} list="contract-form-clients" value={clientText} onChange={(e) => pickClient(e.target.value)} placeholder="Start typing a client name" />
+        <label className={labelClass}>Company
+          <input className={inputClass} list="contract-form-clients" value={clientText} onChange={(e) => pickClient(e.target.value)} placeholder="Start typing a company name" />
           <datalist id="contract-form-clients">{clients.map((c) => <option key={c.id} value={c.name} />)}</datalist>
-          <span className="text-xs text-gray-500">{v.client_id ? "Linked; projects and invoices of this client belong here." : clientText ? "No client with exactly this name; leave blank or pick from the list." : "Optional. Links the contract to the client's projects."}</span>
+          <span className="text-xs text-gray-500">
+            {v.client_id ? "Linked; the company's contacts, projects and invoices belong here." : clientText ? (
+              <>No company with exactly this name. <button type="button" disabled={addingCompany} onClick={addCompany} className="text-blue-700 hover:underline">Add “{clientText}” as a new company</button> (not in Zoho Books yet; finance links it when the record exists).</>
+            ) : "Pick the customer or vendor this contract is with."}
+          </span>
         </label>
         <label className={labelClass}>Invoiced to (legal entity on the invoice)
           <input className={inputClass} value={v.bill_to} onChange={(e) => set({ bill_to: e.target.value })} placeholder="Same as counterparty if blank" />
