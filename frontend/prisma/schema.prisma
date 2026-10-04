@@ -119,6 +119,7 @@ model Person {
   pod_owner_nodes     PodOwner[]
   timesheet_entries   TimesheetEntry[]
   email_aliases       PersonEmailAlias[]
+  contracts_as_spoc   Contract[]           @relation("ContractSpoc")
   identifiers         PersonIdentifier[]
 
   @@index([email])
@@ -1157,7 +1158,8 @@ model Contract {
   bill_to         String?
   start_date      DateTime?
   end_date        DateTime?
-  spoc            String? // person responsible for follow-up
+  spoc            String? // person responsible for follow-up, as a name (kept in step with spoc_person)
+  spoc_person_id  String? // the employee who follows this contract up
   stage           String                  @default("active") // active | renewal_in_progress | awaiting_signature | awaiting_po | closed
   po_status       String?
   notes           String?
@@ -1176,6 +1178,7 @@ model Contract {
   created_at      DateTime                @default(now())
   updated_at      DateTime                @updatedAt
   client          Client?                 @relation(fields: [client_id], references: [id])
+  spoc_person     Person?                 @relation("ContractSpoc", fields: [spoc_person_id], references: [id])
   lines           ContractLine[]
   purchase_orders ContractPurchaseOrder[]
   tasks           ContractTask[]
@@ -1184,6 +1187,7 @@ model Contract {
   @@index([end_date])
   @@index([client_id])
   @@index([spoc])
+  @@index([spoc_person_id])
   @@index([review_bucket])
 }
 

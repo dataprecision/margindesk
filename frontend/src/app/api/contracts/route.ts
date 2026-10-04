@@ -13,6 +13,7 @@ export const GET = withRole(CONTRACT_API_ROLES, async () => {
     const contracts = await prisma.contract.findMany({
       include: {
         client: { select: { id: true, name: true } },
+        spoc_person: { select: { id: true, name: true } },
         lines: { select: { end_date: true, start_date: true } },
         purchase_orders: { select: { valid_to: true } },
         tasks: { where: { status: "open" }, select: { id: true, due_date: true } },
@@ -62,6 +63,8 @@ export const POST = withRole(CONTRACT_API_ROLES, async (req: Request, { user }) 
     if (!body.counterparty?.trim() || !body.basis?.trim()) {
       return NextResponse.json({ error: "Counterparty and basis are required" }, { status: 400 });
     }
+    const spocPerson = body.spoc_person_id ? await prisma.person.findUnique({ where: { id: body.spoc_person_id }, select: { id: true, name: true } }) : null;
+    if (body.spoc_person_id && !spocPerson) return NextResponse.json({ error: "SPOC must be a person from the People list" }, { status: 400 });
     const contract = await prisma.contract.create({
       data: {
         counterparty: body.counterparty.trim(),
@@ -70,7 +73,8 @@ export const POST = withRole(CONTRACT_API_ROLES, async (req: Request, { user }) 
         bill_to: body.bill_to || null,
         start_date: parseDate(body.start_date),
         end_date: parseDate(body.end_date),
-        spoc: body.spoc || null,
+        spoc: spocPerson?.name ?? (body.spoc || null),
+        spoc_person_id: spocPerson?.id ?? null,
         notes: body.notes || null,
         client_id: body.client_id || null,
         stage: typeof body.stage === "string" && body.stage ? body.stage : "active",

@@ -14,6 +14,7 @@ export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { params }
       where: { id },
       include: {
         client: { select: { id: true, name: true } },
+        spoc_person: { select: { id: true, name: true, email: true } },
         lines: { orderBy: [{ sort_order: "asc" }, { created_at: "asc" }], include: { project: { select: { id: true, name: true } } } },
         purchase_orders: { orderBy: [{ valid_to: "desc" }, { po_date: "desc" }] },
         tasks: { orderBy: [{ status: "asc" }, { due_date: "asc" }] },
@@ -60,6 +61,16 @@ export const PATCH = withRole(CONTRACT_API_ROLES, async (req: Request, { user, p
     if ("start_date" in body) data.start_date = parseDate(body.start_date);
     if ("end_date" in body) data.end_date = parseDate(body.end_date);
     if ("client_id" in body) data.client_id = body.client_id || null;
+    if ("spoc_person_id" in body) {
+      if (body.spoc_person_id) {
+        const person = await prisma.person.findUnique({ where: { id: body.spoc_person_id }, select: { id: true, name: true } });
+        if (!person) return NextResponse.json({ error: "SPOC must be a person from the People list" }, { status: 400 });
+        data.spoc_person_id = person.id;
+        data.spoc = person.name;
+      } else {
+        data.spoc_person_id = null;
+      }
+    }
     if ("open_questions" in body && Array.isArray(body.open_questions)) data.open_questions = body.open_questions;
     if ("documents" in body && Array.isArray(body.documents)) data.documents = body.documents;
     if ("review_pointers" in body && Array.isArray(body.review_pointers)) data.review_pointers = body.review_pointers;

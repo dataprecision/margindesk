@@ -21,6 +21,7 @@ export interface ContractFormValues {
   bill_to: string;
   direction: string;
   spoc: string;
+  spoc_person_id: string;
   basis: string;
   stage: string;
   start_date: string;
@@ -48,7 +49,7 @@ const DIRECTIONS = [
 const OTHER = "__other";
 
 export const emptyContract: ContractFormValues = {
-  counterparty: "", client_id: "", bill_to: "", direction: "customer", spoc: "", basis: "Signed agreement", stage: "active",
+  counterparty: "", client_id: "", bill_to: "", direction: "customer", spoc: "", spoc_person_id: "", basis: "Signed agreement", stage: "active",
   start_date: "", end_date: "", po_status: "", notes: "", documents: [],
 };
 
@@ -70,14 +71,18 @@ export default function ContractForm({
 }) {
   const [v, setV] = useState<ContractFormValues>(initial);
   const [clients, setClients] = useState<{ id: string; name: string }[]>([]);
-  const [spocs, setSpocs] = useState<string[]>([]);
+  const [people, setPeople] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [spocText, setSpocText] = useState(initial.spoc);
   const [basisChoice, setBasisChoice] = useState(BASES.includes(initial.basis) ? initial.basis : initial.basis ? OTHER : BASES[0]);
   const [newLinks, setNewLinks] = useState("");
   const set = (patch: Partial<ContractFormValues>) => setV((x) => ({ ...x, ...patch }));
 
   useEffect(() => {
     fetch("/api/clients").then((r) => r.json()).then((d) => setClients((d.clients || []).map((c: any) => ({ id: c.id, name: c.name })).sort((a: any, b: any) => a.name.localeCompare(b.name)))).catch(() => {});
-    fetch("/api/contracts").then((r) => r.json()).then((d) => setSpocs(Array.from(new Set((d.contracts || []).map((c: any) => c.spoc).filter(Boolean))).sort() as string[])).catch(() => {});
+    fetch("/api/people")
+      .then((r) => r.json())
+      .then((d) => setPeople((Array.isArray(d) ? d : d.people || []).filter((p: any) => !p.end_date).map((p: any) => ({ id: p.id, name: p.name, email: p.email })).sort((a: any, b: any) => a.name.localeCompare(b.name))))
+      .catch(() => {});
   }, []);
 
   const clientName = useMemo(() => clients.find((c) => c.id === v.client_id)?.name ?? "", [clients, v.client_id]);
@@ -102,6 +107,7 @@ export default function ContractForm({
     e.preventDefault();
     const basis = basisChoice === OTHER ? v.basis : basisChoice;
     if (!basis.trim()) return;
+    if (spocText && !v.spoc_person_id) return; // a typed name that matches nobody
     await onSave({ ...v, basis: basis.trim(), documents: [...v.documents, ...parseLinks(newLinks)] });
   };
 
@@ -125,9 +131,22 @@ export default function ContractForm({
             {DIRECTIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
           </select>
         </label>
-        <label className={labelClass}>SPOC (who follows this up)
-          <input className={inputClass} list="contract-form-spocs" value={v.spoc} onChange={(e) => set({ spoc: e.target.value })} />
-          <datalist id="contract-form-spocs">{spocs.map((s) => <option key={s} value={s} />)}</datalist>
+        <label className={labelClass}>SPOC (the employee who follows this up)
+          <input
+            className={inputClass}
+            list="contract-form-people"
+            value={spocText}
+            onChange={(e) => {
+              setSpocText(e.target.value);
+              const hit = people.find((p) => p.name === e.target.value || `${p.name} (${p.email})` === e.target.value);
+              set({ spoc_person_id: hit ? hit.id : "", spoc: hit ? hit.name : v.spoc });
+            }}
+            placeholder="Start typing a name from People"
+          />
+          <datalist id="contract-form-people">{people.map((p) => <option key={p.id} value={p.name}>{p.email}</option>)}</datalist>
+          <span className="text-xs text-gray-500">
+            {v.spoc_person_id ? "Linked to the People list." : spocText ? "Pick a name from the list; typed names are not accepted." : initial.spoc && !initial.spoc_person_id ? `Was “${initial.spoc}”, not linked to a person yet.` : "Optional."}
+          </span>
         </label>
       </fieldset>
 

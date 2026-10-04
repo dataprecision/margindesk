@@ -70,6 +70,8 @@ interface Contract {
   open_questions: Question[];
   client: { id: string; name: string } | null;
   client_id: string | null;
+  spoc_person: { id: string; name: string; email: string } | null;
+  spoc_person_id: string | null;
   documents: ContractDocument[] | null;
   review_bucket: ReviewBucket | null;
   review_pointers: Pointer[];
@@ -149,6 +151,7 @@ export default function ContractDetailPage() {
       start_date: toDateInput(contract.start_date),
       end_date: toDateInput(contract.end_date),
       spoc: contract.spoc ?? "",
+      spoc_person_id: contract.spoc_person_id ?? "",
       stage: contract.stage,
       po_status: contract.po_status ?? "",
       notes: contract.notes ?? "",
@@ -225,7 +228,7 @@ export default function ContractDetailPage() {
             {field("Based on", contract.basis)}
             {field("Stage", STAGES.find((s) => s.value === contract.stage)?.label ?? contract.stage)}
             {field("Type", { customer: "Customer (we bill)", vendor: "Vendor (we pay)", both: "Customer and vendor", nda: "NDA only" }[contract.direction] ?? contract.direction)}
-            {field("SPOC", contract.spoc || "—")}
+            {field("SPOC", contract.spoc_person ? contract.spoc_person.name : contract.spoc ? <>{contract.spoc} <span className="text-xs text-amber-700">(not linked to People)</span></> : "—")}
             {field("Purchase orders", contract.po_status || "—")}
             {field("Invoiced to", contract.bill_to || "—")}
             {field("Client in MarginDesk", contract.client ? contract.client.name : <span className="text-gray-400">Not linked</span>)}
