@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { withRole } from "@/lib/auth/protect-route";
 import { CONTRACT_API_ROLES, audit, parseDate } from "@/lib/contracts/api";
 import { contractStatus, daysLeft } from "@/lib/contracts/status";
+import { validationChecks } from "@/lib/contracts/validation";
 
 /**
  * GET /api/contracts
@@ -12,12 +13,12 @@ export const GET = withRole(CONTRACT_API_ROLES, async () => {
   try {
     const contracts = await prisma.contract.findMany({
       include: {
-        client: { select: { id: true, name: true } },
+        client: { select: { id: true, name: true, placeholder: true, zoho_contact_id: true, gstin: true, billing_currency: true, payment_terms: true } },
         spoc_person: { select: { id: true, name: true } },
         lines: { select: { end_date: true, start_date: true } },
-        purchase_orders: { select: { valid_to: true } },
+        purchase_orders: { select: { valid_to: true, status: true, value: true } },
         tasks: { where: { status: "open" }, select: { id: true, due_date: true } },
-        billing_rules: { where: { status: { not: "retired" } }, select: { status: true } },
+        billing_rules: { where: { status: { not: "retired" } }, select: { status: true, source: true } },
       },
       orderBy: { counterparty: "asc" },
     });
@@ -44,6 +45,7 @@ export const GET = withRole(CONTRACT_API_ROLES, async () => {
           overdue_task_count: tasks.filter((t) => t.due_date < today).length,
           open_question_count: questions.filter((q) => !q?.resolved).length,
           open_pointer_count: pointers.filter((p) => !p?.resolved && p?.kind !== "uninvoiced").length,
+          validation: validationChecks({ ...c, documents: c.documents, client: c.client, billing_rules, purchase_orders, review_pointers: undefined } as any).map((t) => ({ team: t.team, done: t.done, missing: t.missing })),
         };
       }),
     });

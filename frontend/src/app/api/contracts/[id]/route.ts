@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { withRole } from "@/lib/auth/protect-route";
 import { CONTRACT_API_ROLES, audit, parseDate } from "@/lib/contracts/api";
 import { contractStatus, daysLeft } from "@/lib/contracts/status";
+import { blockersFor, validationChecks, type Team } from "@/lib/contracts/validation";
 
 /**
  * GET /api/contracts/[id]
@@ -13,7 +14,7 @@ export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { params }
     const contract = await prisma.contract.findUnique({
       where: { id },
       include: {
-        client: { select: { id: true, name: true } },
+        client: { select: { id: true, name: true, placeholder: true, zoho_contact_id: true, gstin: true, billing_currency: true, payment_terms: true } },
         spoc_person: { select: { id: true, name: true, email: true } },
         lines: { orderBy: [{ sort_order: "asc" }, { created_at: "asc" }], include: { project: { select: { id: true, name: true } } } },
         purchase_orders: { orderBy: [{ valid_to: "desc" }, { po_date: "desc" }] },
@@ -28,6 +29,7 @@ export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { params }
       ...contract,
       status: contractStatus(contract.start_date, contract.end_date, today),
       days_left: daysLeft(contract.end_date, today),
+      validation: validationChecks(contract),
       lines: contract.lines.map((l) => ({
         ...l,
         status: contractStatus(l.start_date, l.end_date, today),
@@ -83,9 +85,27 @@ export const PATCH = withRole(CONTRACT_API_ROLES, async (req: Request, { user, p
       data.verified_by = body.verified ? user.name || user.email : null;
       data.verified_at = body.verified ? new Date() : null;
     }
+    // Team sign-offs: { check: "paper" | "commercial" | "billing", done: true | false }
+    if (body.check && ["paper", "commercial", "billing"].includes(body.check)) {
+      const team = body.check as Team;
+      const roleOk = team === "paper" ? ["owner", "legal", "finance"].includes(user.role) : ["owner", "finance", "pm"].includes(user.role);
+      if (!roleOk) return NextResponse.json({ error: `Your role cannot sign off ${team}` }, { status: 403 });
+      if (body.done) {
+        const full = await prisma.contract.findUnique({ where: { id }, include: { client: { select: { placeholder: true, zoho_contact_id: true, gstin: true, billing_currency: true, payment_terms: true } }, billing_rules: { select: { status: true, source: true } }, purchase_orders: { select: { status: true, value: true, valid_to: true } } } });
+        const blockers = blockersFor(team, full!);
+        if (blockers.length) return NextResponse.json({ error: `Not yet: ${blockers.join("; ")}` }, { status: 400 });
+      }
+      data[`${team}_checked_by`] = body.done ? user.name || user.email : null;
+      data[`${team}_checked_at`] = body.done ? new Date() : null;
+    }
 
-    const contract = await prisma.contract.update({ where: { id }, data });
-    await audit(user, "Contract", id, "update", before, contract);
+    let contract = await prisma.contract.update({ where: { id }, data });
+    // "Checked by a person" means all three teams have signed off.
+    const allDone = !!(contract.paper_checked_at && contract.commercial_checked_at && contract.billing_checked_at);
+    if (allDone !== contract.verified && !("verified" in body)) {
+      contract = await prisma.contract.update({ where: { id }, data: { verified: allDone, verified_by: allDone ? "all three teams" : null, verified_at: allDone ? new Date() : null } });
+    }
+    await audit(user, "Contract", id, body.check ? `check_${body.check}` : "update", before, contract);
     return NextResponse.json({ contract });
   } catch (error: any) {
     console.error("Error updating contract:", error);

@@ -1225,6 +1225,13 @@ model Contract {
   verified        Boolean                 @default(false) // a person has checked the entry against the signed copy
   verified_by     String?
   verified_at     DateTime?
+  // Validation by the three teams. The contract is "verified" once all three are done.
+  paper_checked_by      String? // contracting / legal: documents attached, basis, dates and invoiced-to confirmed
+  paper_checked_at      DateTime?
+  commercial_checked_by String? // the lead: every billing rule confirmed
+  commercial_checked_at DateTime?
+  billing_checked_by    String? // finance: company in Zoho, tax, currency, terms, PO
+  billing_checked_at    DateTime?
   review_bucket   String? // clean | open | document_awaited, set when the contract reads were loaded
   review_pointers Json                    @default("[]") // [{ kind, text, big, resolved }] - what a person must settle before billing
   read_file       String? // contracts_v2 file the entry was loaded from

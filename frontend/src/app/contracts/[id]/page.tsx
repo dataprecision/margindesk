@@ -7,6 +7,8 @@ import { BUCKET_LABEL, BUCKET_STYLE, POINTER_LABEL, BILLING_TYPES, STAGES, STATU
 import BillingRules, { type BillingRule } from "./billing-rules";
 import ContractForm, { type ContractDocument, type ContractFormValues } from "@/components/contracts/contract-form";
 import PurchaseOrders, { type PurchaseOrder } from "./purchase-orders";
+import ValidationChecklist from "./validation-checklist";
+import type { TeamCheck } from "@/lib/contracts/validation";
 
 interface Line {
   id: string;
@@ -62,6 +64,7 @@ interface Contract {
   spoc_person: { id: string; name: string; email: string } | null;
   spoc_person_id: string | null;
   documents: ContractDocument[] | null;
+  validation: TeamCheck[];
   review_bucket: ReviewBucket | null;
   review_pointers: Pointer[];
   read_file: string | null;
@@ -181,7 +184,7 @@ export default function ContractDetailPage() {
             {contract.verified ? (
               <span className="text-sm text-green-700">Checked by {contract.verified_by} on {formatDate(contract.verified_at)}</span>
             ) : (
-              <span className="text-sm text-amber-700">Read from documents on {formatDate(contract.loaded_at)}. Not yet checked by a person.</span>
+              <span className="text-sm text-amber-700">Read from documents on {formatDate(contract.loaded_at)}. Not yet validated by all three teams.</span>
             )}
           </div>
         </div>
@@ -200,6 +203,10 @@ export default function ContractDetailPage() {
       </div>
 
       {error && <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">{error}</div>}
+
+      {contract.direction !== "vendor" && contract.validation && (
+        <ValidationChecklist contractId={id} checks={contract.validation} documents={documents} saving={saving} call={call} />
+      )}
 
       <section className="bg-white rounded-lg shadow p-6">
         {editingHeader && header ? (

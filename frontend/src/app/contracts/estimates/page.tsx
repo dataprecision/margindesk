@@ -61,7 +61,7 @@ export default function DraftEstimatesPage() {
     .sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status) || Number(b.sub_total) - Number(a.sub_total));
   const total = (s: DraftStatus) => drafts.filter((d) => d.status === s && d.currency === "INR").reduce((n, d) => n + Number(d.sub_total), 0);
 
-  const GAP_LABEL: Record<string, string> = { company: "No company", company_zoho: "Company not in Zoho", bill_to: "No invoiced-to", paper: "No contract in effect", expired: "Contract expired", rules_unconfirmed: "Rules not confirmed", rule_params: "Rule needs a number", input: "Month's number missing", po_missing: "No valid PO", po_balance: "PO balance short" };
+  const GAP_LABEL: Record<string, string> = { validation: "Not validated by all teams", company: "No company", company_zoho: "Company not in Zoho", bill_to: "No invoiced-to", paper: "No contract in effect", expired: "Contract expired", rules_unconfirmed: "Rules not confirmed", rule_params: "Rule needs a number", input: "Month's number missing", po_missing: "No valid PO", po_balance: "PO balance short" };
 
   return (
     <div className="container mx-auto px-4 py-8">
