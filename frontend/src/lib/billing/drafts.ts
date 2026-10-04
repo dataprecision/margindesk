@@ -115,7 +115,7 @@ export async function prepareDrafts(period: Date, db: Db = defaultPrisma, prepar
 }
 
 function buildGaps(x: {
-  contract: { bill_to: string | null; review_bucket: string | null; start_date: Date | null; end_date: Date | null; po_status: string | null; basis: string };
+  contract: { bill_to: string | null; review_bucket: string | null; start_date: Date | null; end_date: Date | null; po_status: string | null; basis: string; paper_checked_at: Date | null; commercial_checked_at: Date | null; billing_checked_at: Date | null };
   client: { placeholder: boolean; zoho_contact_id: string | null; gstin: string | null } | null;
   rules: { status: string; shape: string; params: unknown; service: string }[];
   basis: "confirmed" | "contract" | "invoices";
@@ -132,6 +132,8 @@ function buildGaps(x: {
   if (contract.review_bucket === "document_awaited") gaps.push({ code: "paper", text: `No contract in effect (${contract.basis}); the signed agreement, renewal or PO is awaited.`, blocking: true });
   else if (contractStatus(contract.start_date, contract.end_date) === "Expired") gaps.push({ code: "expired", text: "The contract's end date has passed.", blocking: true });
   if (contract.review_bucket === "open") gaps.push({ code: "pointers", text: "The contract still has open pointers from the reading.", blocking: false });
+  const unchecked = [!contract.paper_checked_at && "contracting", !contract.commercial_checked_at && "the lead", !contract.billing_checked_at && "finance"].filter(Boolean);
+  if (unchecked.length) gaps.push({ code: "validation", text: `Not yet validated by ${unchecked.join(", ")}.`, blocking: true });
   if (x.basis !== "confirmed") gaps.push({ code: "rules_unconfirmed", text: x.basis === "contract" ? "The billing rules are proposed from the contract; the lead has not confirmed them." : "The billing rules come from past invoices only, not from the contract.", blocking: true });
   const unconfirmed = x.basis === "confirmed" ? [] : x.rules.filter((r) => r.status !== "confirmed");
   for (const r of x.rules) {
