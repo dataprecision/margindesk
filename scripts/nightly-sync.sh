@@ -59,4 +59,10 @@ run_books_sync() {
 }
 run_books_sync "companies (Zoho Books contacts)" "contacts"
 run_books_sync "contact persons"                 "contact_persons"
+run_books_sync "invoices"                        "invoices"
+run_books_sync "credit notes"                    "creditnotes"
+po_body="$(mktemp)"
+po_status=$(curl -sS -o "$po_body" -w '%{http_code}' -X POST "$BASE_URL/api/contracts/po-consumption" -H "Authorization: Bearer $CRON_SECRET" --max-time 600)
+if [[ "$po_status" == "200" ]]; then log "PO consumption OK: $(head -c 400 "$po_body")"; else log "PO consumption FAILED (HTTP $po_status): $(head -c 600 "$po_body")"; fi
+rm -f "$po_body"
 log "=== Nightly sync finished ==="

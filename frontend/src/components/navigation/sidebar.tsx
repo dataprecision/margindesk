@@ -17,7 +17,7 @@ interface NavItem {
   label: string;
   roles: Role[];
   /** Badge shown after the label, from /api/contracts/nav-counts. */
-  badge?: "pointers" | "overdue";
+  badge?: "pointers" | "overdue" | "po_alerts";
 }
 
 interface NavGroup {
@@ -41,6 +41,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: "/companies", label: "Companies", roles: BILLING },
       { href: "/contracts", label: "Contracts", roles: BILLING, badge: "pointers" },
+      { href: "/contracts/purchase-orders", label: "Purchase orders", roles: BILLING, badge: "po_alerts" },
       { href: "/contracts/tasks", label: "Follow-ups", roles: BILLING, badge: "overdue" },
     ],
   },
@@ -118,7 +119,7 @@ export default function Sidebar() {
   const pathname = usePathname() ?? "";
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [loadedPrefs, setLoadedPrefs] = useState(false);
-  const [counts, setCounts] = useState<{ pointers: number; overdue: number } | null>(null);
+  const [counts, setCounts] = useState<{ pointers: number; overdue: number; po_alerts: number } | null>(null);
 
   const role = (session?.user?.role ?? "readonly") as Role;
   const allowed = (item: NavItem) => item.roles.includes(role);
@@ -126,7 +127,7 @@ export default function Sidebar() {
   const setup = SETUP.filter(allowed);
   const seesBilling = GROUPS[0].items.some(allowed);
 
-  const isCurrent = (href: string) => (href === "/contracts" ? pathname === href || /^\/contracts\/(?!tasks)/.test(pathname) : pathname === href || (href !== "/settings" && pathname.startsWith(href + "/")));
+  const isCurrent = (href: string) => (href === "/contracts" ? pathname === href || /^\/contracts\/(?!tasks|purchase-orders)/.test(pathname) : pathname === href || (href !== "/settings" && pathname.startsWith(href + "/")));
   const activeGroup = groups.find((g) => g.items.some((i) => isCurrent(i.href)))?.key ?? (setup.some((i) => isCurrent(i.href)) ? "setup" : null);
 
   useEffect(() => {
@@ -141,7 +142,7 @@ export default function Sidebar() {
     if (!session || !seesBilling) return;
     fetch("/api/contracts/nav-counts")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => d && setCounts({ pointers: d.contracts_with_open_pointers ?? 0, overdue: d.overdue_tasks ?? 0 }))
+      .then((d) => d && setCounts({ pointers: d.contracts_with_open_pointers ?? 0, overdue: d.overdue_tasks ?? 0, po_alerts: d.po_alerts ?? 0 }))
       .catch(() => {});
   }, [session, seesBilling, pathname]);
 
@@ -156,9 +157,9 @@ export default function Sidebar() {
 
   const badgeFor = (item: NavItem) => {
     if (!counts || !item.badge) return null;
-    const n = item.badge === "pointers" ? counts.pointers : counts.overdue;
+    const n = item.badge === "pointers" ? counts.pointers : item.badge === "po_alerts" ? counts.po_alerts : counts.overdue;
     if (!n) return null;
-    const tone = item.badge === "overdue" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800";
+    const tone = item.badge === "overdue" || item.badge === "po_alerts" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800";
     return <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${tone}`}>{n}</span>;
   };
 
@@ -197,7 +198,7 @@ export default function Sidebar() {
 
         <div className="mt-3 space-y-1">
           {groups.map((g) => {
-            const groupBadge = g.key === "billing" && counts && !isOpen(g.key) ? counts.pointers + counts.overdue : 0;
+            const groupBadge = g.key === "billing" && counts && !isOpen(g.key) ? counts.pointers + counts.overdue + counts.po_alerts : 0;
             return (
               <div key={g.key}>
                 {groupHeader(g.key, g.label, g.icon, groupBadge || undefined)}
