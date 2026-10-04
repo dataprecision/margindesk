@@ -41,6 +41,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: "/companies", label: "Companies", roles: BILLING },
       { href: "/contracts", label: "Contracts", roles: BILLING, badge: "pointers" },
+      { href: "/contracts/estimates", label: "Draft estimates", roles: BILLING },
       { href: "/contracts/purchase-orders", label: "Purchase orders", roles: BILLING, badge: "po_alerts" },
       { href: "/contracts/tasks", label: "Follow-ups", roles: BILLING, badge: "overdue" },
     ],
@@ -127,7 +128,7 @@ export default function Sidebar() {
   const setup = SETUP.filter(allowed);
   const seesBilling = GROUPS[0].items.some(allowed);
 
-  const isCurrent = (href: string) => (href === "/contracts" ? pathname === href || /^\/contracts\/(?!tasks|purchase-orders)/.test(pathname) : pathname === href || (href !== "/settings" && pathname.startsWith(href + "/")));
+  const isCurrent = (href: string) => (href === "/contracts" ? pathname === href || /^\/contracts\/(?!tasks|purchase-orders|estimates)/.test(pathname) : pathname === href || (href !== "/settings" && pathname.startsWith(href + "/")));
   const activeGroup = groups.find((g) => g.items.some((i) => isCurrent(i.href)))?.key ?? (setup.some((i) => isCurrent(i.href)) ? "setup" : null);
 
   useEffect(() => {
