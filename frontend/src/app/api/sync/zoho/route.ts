@@ -25,6 +25,12 @@ export const POST = withAdminRole(async (req, { user }) => {
     if (syncType === "contact_persons") {
       return await syncContactPersons(user, body.only_with_contracts !== false);
     }
+    if (syncType === "invoices") {
+      return await syncInvoices(user, body.date_start || "2025-04-01");
+    }
+    if (syncType === "creditnotes") {
+      return await syncCreditNotes(user, body.date_start || "2025-04-01");
+    }
 
     return NextResponse.json(
       { error: "Invalid sync type. Use 'contacts' or 'cash_receipts'" },
@@ -446,6 +452,124 @@ async function syncContactPersons(user: any, onlyWithContracts: boolean) {
     return NextResponse.json({ success: true, companies, created, updated, deactivated, errors: errors.length });
   } catch (error: any) {
     await prisma.syncLog.create({ data: { sync_type: "zoho_contact_persons", status: "failed", started_at: started, completed_at: new Date(), error_message: error.message } });
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const dateOf = (s: unknown) => (typeof s === "string" && /^\d{4}-\d{2}-\d{2}/.test(s) ? new Date(s.slice(0, 10) + "T00:00:00.000Z") : null);
+const tsOf = (s: unknown) => (typeof s === "string" && s ? new Date(s) : null);
+
+/** GET a Zoho Books path, waiting out the per-minute limit. */
+async function zohoGet(tokens: { api_domain: string; organization_id: string; access_token: string }, path: string) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(`${tokens.api_domain}/books/v3/${path}${path.includes("?") ? "&" : "?"}organization_id=${tokens.organization_id}`, { headers: { Authorization: `Zoho-oauthtoken ${tokens.access_token}` } });
+    if (res.status === 429) { await pause(60_000); continue; }
+    if (!res.ok) throw new Error(`${path}: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+    return res.json();
+  }
+  throw new Error(`${path}: rate limited`);
+}
+
+async function listAll(tokens: any, base: string, key: string) {
+  const out: any[] = [];
+  for (let page = 1; page <= 100; page++) {
+    const data = await zohoGet(tokens, `${base}&per_page=200&page=${page}`);
+    out.push(...(data[key] ?? []));
+    if (!data.page_context?.has_more_page) break;
+    await pause(400);
+  }
+  return out;
+}
+
+/**
+ * Zoho Books invoices, read-only. The list is fetched in full from date_start;
+ * details (line items, custom fields) only for invoices that are new or were
+ * modified since the last sync.
+ */
+async function syncInvoices(user: any, dateStart: string) {
+  const started = new Date();
+  let created = 0, updated = 0, unchanged = 0;
+  const errors: string[] = [];
+  try {
+    const tokens = await getZohoAccessToken();
+    if (!tokens) throw new Error("Zoho Books not connected. Please connect in Settings.");
+    const clients = await prisma.client.findMany({ where: { zoho_contact_id: { not: null } }, select: { id: true, zoho_contact_id: true } });
+    const clientByZoho = new Map(clients.map((c) => [c.zoho_contact_id!, c.id]));
+    const list = await listAll(tokens, `invoices?date_start=${dateStart}&sort_column=date&sort_order=A`, "invoices");
+    const known = new Map((await prisma.zohoInvoice.findMany({ select: { zoho_invoice_id: true, last_modified_time: true } })).map((i) => [i.zoho_invoice_id, i.last_modified_time?.getTime() ?? 0]));
+    for (const item of list) {
+      try {
+        const modified = tsOf(item.last_modified_time)?.getTime() ?? 0;
+        if (known.has(item.invoice_id) && known.get(item.invoice_id) === modified) { unchanged++; continue; }
+        const inv = (await zohoGet(tokens, `invoices/${item.invoice_id}`)).invoice;
+        await pause(650);
+        const cf = (label: string) => (inv.custom_fields ?? []).find((f: any) => String(f.label).toLowerCase() === label)?.value ?? null;
+        const data = {
+          invoice_number: inv.invoice_number, zoho_customer_id: inv.customer_id, customer_name: inv.customer_name, client_id: clientByZoho.get(inv.customer_id) ?? null,
+          date: dateOf(inv.date)!, due_date: dateOf(inv.due_date), status: inv.status, currency: inv.currency_code || "INR", exchange_rate: Number(inv.exchange_rate) || 1,
+          sub_total: Number(inv.sub_total) || 0, tax_total: Number(inv.tax_total) || 0, total: Number(inv.total) || 0, balance: Number(inv.balance) || 0,
+          reference_number: inv.reference_number || null, service_month: dateOf(cf("service month")), team: cf("team"), zoho_estimate_id: inv.estimate_id || null,
+          last_modified_time: tsOf(inv.last_modified_time), synced_at: new Date(),
+        };
+        const lines = (inv.line_items ?? []).map((l: any) => ({ zoho_line_item_id: l.line_item_id || null, item_name: l.name || l.item_name || "Line", description: l.description || null, quantity: Number(l.quantity) || 1, rate: Number(l.rate) || 0, amount: Number(l.item_total) || 0, hsn_sac: l.hsn_or_sac || null, tax_percentage: l.tax_percentage != null ? Number(l.tax_percentage) : null }));
+        const existing = await prisma.zohoInvoice.findUnique({ where: { zoho_invoice_id: inv.invoice_id }, select: { id: true } });
+        if (existing) {
+          await prisma.$transaction([
+            prisma.zohoInvoice.update({ where: { id: existing.id }, data }),
+            prisma.zohoInvoiceLine.deleteMany({ where: { invoice_id: existing.id } }),
+            prisma.zohoInvoiceLine.createMany({ data: lines.map((l: any) => ({ ...l, invoice_id: existing.id })) }),
+          ]);
+          updated++;
+        } else {
+          await prisma.zohoInvoice.create({ data: { ...data, zoho_invoice_id: inv.invoice_id, lines: { create: lines } } });
+          created++;
+        }
+      } catch (e: any) { errors.push(`${item.invoice_number}: ${e.message}`); }
+    }
+    await prisma.syncLog.create({ data: { sync_type: "zoho_invoices", status: errors.length ? "completed_with_errors" : "success", started_at: started, completed_at: new Date(), records_synced: created + updated, error_message: errors.length ? errors.slice(0, 20).join("; ") : undefined, metadata: { listed: list.length, created, updated, unchanged, date_start: dateStart, triggered_by: user?.email } } });
+    return NextResponse.json({ success: true, listed: list.length, created, updated, unchanged, errors: errors.length });
+  } catch (error: any) {
+    await prisma.syncLog.create({ data: { sync_type: "zoho_invoices", status: "failed", started_at: started, completed_at: new Date(), error_message: error.message } });
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+/** Zoho Books credit notes, read-only, with the invoices each was applied to. */
+async function syncCreditNotes(user: any, dateStart: string) {
+  const started = new Date();
+  let created = 0, updated = 0, unchanged = 0;
+  const errors: string[] = [];
+  try {
+    const tokens = await getZohoAccessToken();
+    if (!tokens) throw new Error("Zoho Books not connected. Please connect in Settings.");
+    const clients = await prisma.client.findMany({ where: { zoho_contact_id: { not: null } }, select: { id: true, zoho_contact_id: true } });
+    const clientByZoho = new Map(clients.map((c) => [c.zoho_contact_id!, c.id]));
+    const list = await listAll(tokens, `creditnotes?date_start=${dateStart}&sort_column=date&sort_order=A`, "creditnotes");
+    const known = new Map((await prisma.zohoCreditNote.findMany({ select: { zoho_creditnote_id: true, last_modified_time: true } })).map((c) => [c.zoho_creditnote_id, c.last_modified_time?.getTime() ?? 0]));
+    for (const item of list) {
+      try {
+        const modified = tsOf(item.last_modified_time)?.getTime() ?? 0;
+        if (known.has(item.creditnote_id) && known.get(item.creditnote_id) === modified) { unchanged++; continue; }
+        const cn = (await zohoGet(tokens, `creditnotes/${item.creditnote_id}`)).creditnote;
+        await pause(650);
+        const applied: string[] = (cn.invoices_credited ?? cn.invoices ?? []).map((x: any) => x.invoice_id).filter(Boolean);
+        const data = {
+          creditnote_number: cn.creditnote_number, zoho_customer_id: cn.customer_id, customer_name: cn.customer_name, client_id: clientByZoho.get(cn.customer_id) ?? null,
+          date: dateOf(cn.date)!, status: cn.status, currency: cn.currency_code || "INR", exchange_rate: Number(cn.exchange_rate) || 1,
+          sub_total: Number(cn.sub_total) || 0, total: Number(cn.total) || 0, balance: Number(cn.balance) || 0, reference_number: cn.reference_number || null,
+          applied_invoice_ids: applied, last_modified_time: tsOf(cn.last_modified_time), synced_at: new Date(),
+        };
+        const existing = await prisma.zohoCreditNote.findUnique({ where: { zoho_creditnote_id: cn.creditnote_id }, select: { id: true } });
+        if (existing) { await prisma.zohoCreditNote.update({ where: { id: existing.id }, data }); updated++; }
+        else { await prisma.zohoCreditNote.create({ data: { ...data, zoho_creditnote_id: cn.creditnote_id } }); created++; }
+      } catch (e: any) { errors.push(`${item.creditnote_number}: ${e.message}`); }
+    }
+    await prisma.syncLog.create({ data: { sync_type: "zoho_creditnotes", status: errors.length ? "completed_with_errors" : "success", started_at: started, completed_at: new Date(), records_synced: created + updated, error_message: errors.length ? errors.slice(0, 20).join("; ") : undefined, metadata: { listed: list.length, created, updated, unchanged, date_start: dateStart, triggered_by: user?.email } } });
+    return NextResponse.json({ success: true, listed: list.length, created, updated, unchanged, errors: errors.length });
+  } catch (error: any) {
+    await prisma.syncLog.create({ data: { sync_type: "zoho_creditnotes", status: "failed", started_at: started, completed_at: new Date(), error_message: error.message } });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

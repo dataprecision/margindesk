@@ -1324,12 +1324,23 @@ model ContractPurchaseOrder {
   currency    String?
   status      String? // valid | expired | no validity stated, as of the last read
   auto_key    String?   @unique // set on loaded POs so a re-load updates rather than duplicates
+  // Consumption, recomputed nightly from Zoho invoices that quote the PO.
+  opening_consumed     Decimal?  @db.Decimal(15, 2) // invoiced before our invoice data starts
+  consumed             Decimal?  @db.Decimal(15, 2)
+  consumed_as_of       DateTime?
+  run_rate             Decimal?  @db.Decimal(15, 2) // per month, last three months
+  projected_exhaustion DateTime?
+  alert_state          String? // healthy | low | exhausting_before_term | over_consumed | expiring_with_balance | expired | no_value
+  notes                String?
   created_at  DateTime  @default(now())
   updated_at  DateTime  @updatedAt
   contract    Contract  @relation(fields: [contract_id], references: [id], onDelete: Cascade)
+  invoices    ZohoInvoice[]
+  credit_notes ZohoCreditNote[]
 
   @@index([contract_id])
   @@index([valid_to])
+  @@index([alert_state])
 }
 
 model ContractTask {
@@ -1372,4 +1383,84 @@ enum ContractTaskStatus {
   open
   done
   dismissed
+}
+
+// Zoho Books invoices, read-only copy refreshed nightly. Used for purchase
+// order consumption and, later, for comparing draft estimates with what was
+// raised. Amounts are in the invoice currency; exchange_rate converts to INR.
+model ZohoInvoice {
+  id                 String    @id @default(cuid())
+  zoho_invoice_id    String    @unique
+  invoice_number     String
+  zoho_customer_id   String
+  customer_name      String
+  client_id          String?
+  date               DateTime
+  due_date           DateTime?
+  status             String
+  currency           String    @default("INR")
+  exchange_rate      Decimal   @default(1) @db.Decimal(12, 6)
+  sub_total          Decimal   @db.Decimal(15, 2)
+  tax_total          Decimal   @default(0) @db.Decimal(15, 2)
+  total              Decimal   @db.Decimal(15, 2)
+  balance            Decimal   @default(0) @db.Decimal(15, 2)
+  reference_number   String?
+  service_month      DateTime?
+  team               String?
+  zoho_estimate_id   String?
+  purchase_order_id  String?
+  po_match           String? // reference | manual
+  last_modified_time DateTime?
+  synced_at          DateTime  @default(now())
+  lines              ZohoInvoiceLine[]
+  purchase_order     ContractPurchaseOrder? @relation(fields: [purchase_order_id], references: [id], onDelete: SetNull)
+
+  @@index([zoho_customer_id])
+  @@index([client_id])
+  @@index([date])
+  @@index([purchase_order_id])
+  @@index([reference_number])
+}
+
+model ZohoInvoiceLine {
+  id                String      @id @default(cuid())
+  invoice_id        String
+  zoho_line_item_id String?     @unique
+  item_name         String
+  description       String?
+  quantity          Decimal     @default(1) @db.Decimal(12, 4)
+  rate              Decimal     @default(0) @db.Decimal(15, 2)
+  amount            Decimal     @db.Decimal(15, 2)
+  hsn_sac           String?
+  tax_percentage    Decimal?    @db.Decimal(5, 2)
+  invoice           ZohoInvoice @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+
+  @@index([invoice_id])
+}
+
+model ZohoCreditNote {
+  id                  String    @id @default(cuid())
+  zoho_creditnote_id  String    @unique
+  creditnote_number   String
+  zoho_customer_id    String
+  customer_name       String
+  client_id           String?
+  date                DateTime
+  status              String
+  currency            String    @default("INR")
+  exchange_rate       Decimal   @default(1) @db.Decimal(12, 6)
+  sub_total           Decimal   @db.Decimal(15, 2)
+  total               Decimal   @db.Decimal(15, 2)
+  balance             Decimal   @default(0) @db.Decimal(15, 2)
+  reference_number    String?
+  applied_invoice_ids String[]  @default([]) // Zoho invoice ids this note was applied to
+  purchase_order_id   String?
+  po_match            String?
+  last_modified_time  DateTime?
+  synced_at           DateTime  @default(now())
+  purchase_order      ContractPurchaseOrder? @relation(fields: [purchase_order_id], references: [id], onDelete: SetNull)
+
+  @@index([zoho_customer_id])
+  @@index([date])
+  @@index([purchase_order_id])
 }

@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { BUCKET_LABEL, BUCKET_STYLE, POINTER_LABEL, BILLING_TYPES, STAGES, STATUS_STYLE, formatDate, toDateInput, type ContractStatus, type ReviewBucket } from "@/lib/contracts/status";
 import BillingRules, { type BillingRule } from "./billing-rules";
 import ContractForm, { type ContractDocument, type ContractFormValues } from "@/components/contracts/contract-form";
+import PurchaseOrders, { type PurchaseOrder } from "./purchase-orders";
 
 interface Line {
   id: string;
@@ -24,18 +25,6 @@ interface Line {
   verified: boolean;
   status: ContractStatus;
   days_left: number | null;
-}
-
-interface PurchaseOrder {
-  id: string;
-  po_number: string;
-  po_date: string | null;
-  valid_from: string | null;
-  valid_to: string | null;
-  value_text: string | null;
-  hours_text: string | null;
-  rate_text: string | null;
-  covers: string | null;
 }
 
 interface Task {
@@ -446,30 +435,7 @@ export default function ContractDetailPage() {
         </section>
       </div>
 
-      <section className="bg-white rounded-lg shadow">
-        <div className="px-6 py-4 border-b border-gray-200"><h2 className="text-lg font-semibold text-gray-900">Purchase orders ({contract.purchase_orders.length})</h2></div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50">
-              <tr>{["PO number", "Dated", "Valid from", "Valid to", "Value", "Hours / quantity", "Covers"].map((h) => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>)}</tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {contract.purchase_orders.map((p) => (
-                <tr key={p.id} className="align-top">
-                  <td className="px-4 py-3 font-medium">{p.po_number}</td>
-                  <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDate(p.po_date)}</td>
-                  <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDate(p.valid_from)}</td>
-                  <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDate(p.valid_to)}</td>
-                  <td className="px-4 py-3">{p.value_text || "—"}</td>
-                  <td className="px-4 py-3">{p.hours_text || "—"}{p.rate_text && <div className="text-xs text-gray-500">{p.rate_text}</div>}</td>
-                  <td className="px-4 py-3 text-gray-600 max-w-md">{p.covers || "—"}</td>
-                </tr>
-              ))}
-              {contract.purchase_orders.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">No purchase orders on file.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <PurchaseOrders contractId={id} purchaseOrders={contract.purchase_orders} onChange={load} />
     </div>
   );
 }

@@ -23,6 +23,7 @@ const KIND_LABEL: Record<string, string> = {
   review: "Open pointers",
   document: "Document awaited",
   company_match: "Zoho match to confirm",
+  po_alert: "PO running out",
 };
 
 const KIND_STYLE: Record<string, string> = {
@@ -33,6 +34,7 @@ const KIND_STYLE: Record<string, string> = {
   review: "bg-amber-100 text-amber-800",
   document: "bg-red-100 text-red-700",
   company_match: "bg-blue-100 text-blue-800",
+  po_alert: "bg-red-100 text-red-700",
 };
 
 const BUCKETS = ["Overdue", "Today", "Next 7 days", "Next 30 days", "Later"] as const;
