@@ -40,6 +40,7 @@ model Client {
   projects         Project[]
   contracts        Contract[]
   people           ClientContact[]
+  draft_estimates  DraftEstimate[]
   owner_person     Person?    @relation("ClientOwner", fields: [owner_person_id], references: [id])
   legal_person     Person?    @relation("ClientLegal", fields: [legal_person_id], references: [id])
   finance_person   Person?    @relation("ClientFinance", fields: [finance_person_id], references: [id])
@@ -1236,6 +1237,7 @@ model Contract {
   purchase_orders ContractPurchaseOrder[]
   tasks           ContractTask[]
   billing_rules   BillingRule[]
+  draft_estimates DraftEstimate[]
 
   @@index([end_date])
   @@index([client_id])
@@ -1302,6 +1304,7 @@ model BillingRule {
   updated_at   DateTime          @updatedAt
   contract     Contract          @relation(fields: [contract_id], references: [id], onDelete: Cascade)
   project      Project?          @relation(fields: [project_id], references: [id])
+  draft_lines  DraftEstimateLine[]
 
   @@index([contract_id])
   @@index([status])
@@ -1337,6 +1340,7 @@ model ContractPurchaseOrder {
   contract    Contract  @relation(fields: [contract_id], references: [id], onDelete: Cascade)
   invoices    ZohoInvoice[]
   credit_notes ZohoCreditNote[]
+  draft_estimates DraftEstimate[]
 
   @@index([contract_id])
   @@index([valid_to])
@@ -1463,4 +1467,64 @@ model ZohoCreditNote {
   @@index([zoho_customer_id])
   @@index([date])
   @@index([purchase_order_id])
+}
+
+// A draft estimate is what MarginDesk prepares for a contract and a month
+// before anything exists in Zoho Books: one line per billing rule, the
+// month's inputs, the computed amounts, and the readiness gaps that must be
+// closed before a real estimate can be raised. Nothing here reaches Zoho.
+model DraftEstimate {
+  id                 String   @id @default(cuid())
+  contract_id        String
+  client_id          String?
+  period             DateTime // first day of the service month
+  currency           String   @default("INR")
+  status             String   @default("draft") // draft | ready | lead_signed | finance_checked | cancelled
+  purchase_order_id  String?
+  fx_rate            Decimal? @db.Decimal(12, 6)
+  sub_total          Decimal  @default(0) @db.Decimal(15, 2)
+  gaps               Json     @default("[]") // [{ code, text, blocking }]
+  notes              String?
+  prepared_at        DateTime @default(now())
+  prepared_by        String?
+  lead_signed_by     String?
+  lead_signed_at     DateTime?
+  finance_checked_by String?
+  finance_checked_at DateTime?
+  zoho_estimate_id   String? // set once a person has created it in Zoho Books
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+  contract           Contract               @relation(fields: [contract_id], references: [id], onDelete: Cascade)
+  client             Client?                @relation(fields: [client_id], references: [id])
+  purchase_order     ContractPurchaseOrder? @relation(fields: [purchase_order_id], references: [id], onDelete: SetNull)
+  lines              DraftEstimateLine[]
+
+  @@unique([contract_id, period, currency])
+  @@index([period])
+  @@index([status])
+  @@index([client_id])
+}
+
+model DraftEstimateLine {
+  id          String   @id @default(cuid())
+  draft_id    String
+  rule_id     String?
+  service     String
+  description String?
+  shape       String
+  params      Json     @default("{}")
+  inputs      Json     @default("{}") // the month's numbers, entered by the lead
+  quantity    Decimal? @db.Decimal(12, 4)
+  rate        Decimal? @db.Decimal(15, 4)
+  amount      Decimal  @default(0) @db.Decimal(15, 2)
+  explanation String?
+  missing     String[] @default([]) // inputs still needed
+  sort_order  Int      @default(0)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  draft       DraftEstimate @relation(fields: [draft_id], references: [id], onDelete: Cascade)
+  rule        BillingRule?  @relation(fields: [rule_id], references: [id], onDelete: SetNull)
+
+  @@index([draft_id])
+  @@index([rule_id])
 }
