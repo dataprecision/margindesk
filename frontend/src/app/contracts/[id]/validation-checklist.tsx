@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { formatDate } from "@/lib/contracts/status";
 import { TEAM_LABEL, type Team, type TeamCheck } from "@/lib/contracts/validation";
+import SharePointPicker from "@/components/contracts/sharepoint-picker";
 
 // The three team sign-offs on a contract, each with its checklist, and a quick
 // way for contracting to attach the SharePoint links the paper check needs.
@@ -11,8 +12,9 @@ import { TEAM_LABEL, type Team, type TeamCheck } from "@/lib/contracts/validatio
 const inputClass = "w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500";
 const WHO: Record<Team, string> = { paper: "Attach the signed agreement and the current PO from SharePoint, then confirm the basis, dates and invoiced-to entity match them.", commercial: "Invoicing: confirm every billing rule below (Confirm on each rule) against the terms and past invoices, and make sure the SPOC is a person from People.", billing: "Invoicing: confirm the company is linked to its Zoho Books record, with GSTIN, currency, payment terms, and a valid PO where the customer uses them." };
 
-export default function ValidationChecklist({ contractId, checks, documents, saving, call, role }: {
+export default function ValidationChecklist({ contractId, clientId, checks, documents, saving, call, role }: {
   contractId: string;
+  clientId?: string | null;
   checks: TeamCheck[];
   role?: string;
   documents: { name: string; uri?: string | null; type?: string | null }[];
@@ -21,7 +23,12 @@ export default function ValidationChecklist({ contractId, checks, documents, sav
 }) {
   const [rows, setRows] = useState<{ name: string; uri: string }[]>([{ name: "", uri: "" }]);
   const [adding, setAdding] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [problem, setProblem] = useState("");
+  const attachPicked = async (files: { name: string; uri: string }[]) => {
+    const kept = documents.filter((d) => !files.some((x) => x.name === d.name && !(d.uri && /^https?:\/\//i.test(d.uri))));
+    return call(`/api/contracts/${contractId}`, "PATCH", { documents: [...kept, ...files.map((f) => ({ ...f, type: "Link" }))] });
+  };
   const allDone = checks.every((c) => c.done);
   // Files the reading identified but that have no web link yet: offered as names to pick.
   const unlinked = documents.filter((d) => !(d.uri && /^https?:\/\//i.test(d.uri)));
@@ -93,8 +100,13 @@ export default function ValidationChecklist({ contractId, checks, documents, sav
                         <button onClick={() => { setAdding(false); setProblem(""); }} className="px-3 py-1.5 border border-gray-300 bg-white rounded-md text-xs">Cancel</button>
                       </div>
                     </div>
+                  ) : picking && clientId ? (
+                    <SharePointPicker clientId={clientId} alreadyAttached={documents.map((d) => d.uri ?? "").filter(Boolean)} onAttach={attachPicked} onClose={() => setPicking(false)} saving={saving} />
                   ) : (
-                    <button onClick={() => setAdding(true)} className="px-3 py-1.5 border border-blue-300 bg-blue-50 text-blue-800 rounded-md text-xs font-medium hover:bg-blue-100">Attach SharePoint link</button>
+                    <div className="flex flex-wrap gap-2">
+                      {clientId && <button onClick={() => setPicking(true)} className="px-3 py-1.5 border border-blue-300 bg-blue-50 text-blue-800 rounded-md text-xs font-medium hover:bg-blue-100">Pick from SharePoint</button>}
+                      <button onClick={() => setAdding(true)} className="px-3 py-1.5 border border-gray-300 bg-white text-gray-800 rounded-md text-xs font-medium hover:bg-gray-50">Paste a link</button>
+                    </div>
                   )}
                 </div>
               )}
