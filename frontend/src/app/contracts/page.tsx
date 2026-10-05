@@ -26,6 +26,7 @@ interface ContractRow {
   open_question_count: number;
   review_bucket: ReviewBucket | null;
   open_pointer_count: number;
+  client: { id: string; name: string } | null;
 }
 
 const DIRECTION_LABEL: Record<ContractRow["direction"], string> = {
@@ -77,7 +78,7 @@ export default function ContractsPage() {
         (!direction || c.direction === direction) &&
         (!spoc || c.spoc === spoc) &&
         (!bucket || c.review_bucket === bucket) &&
-        (!search || `${c.counterparty} ${c.basis} ${c.spoc ?? ""}`.toLowerCase().includes(search.toLowerCase()))
+        (!search || `${c.counterparty} ${c.client?.name ?? ""} ${c.basis} ${c.spoc ?? ""}`.toLowerCase().includes(search.toLowerCase()))
     )
     .sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) || a.counterparty.localeCompare(b.counterparty));
 
@@ -142,7 +143,7 @@ export default function ContractsPage() {
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search counterparty, basis or SPOC"
+          placeholder="Search company, counterparty, basis or SPOC"
           className="px-3 py-2 border border-gray-300 rounded-md text-sm w-72 max-w-full"
         />
         <select value={direction} onChange={(e) => setDirection(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-md text-sm">
@@ -179,7 +180,10 @@ export default function ContractsPage() {
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
                     <Link href={`/contracts/${c.id}`} className="font-medium text-blue-700 hover:underline">{c.counterparty}</Link>
-                    <div className="text-xs text-gray-500">{DIRECTION_LABEL[c.direction]}</div>
+                    <div className="text-xs text-gray-500">
+                      {c.client && c.client.name.toLowerCase() !== c.counterparty.toLowerCase() && <><Link href={`/companies/${c.client.id}`} className="hover:underline">{c.client.name}</Link> · </>}
+                      {DIRECTION_LABEL[c.direction]}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-gray-700">
                     {c.basis}
