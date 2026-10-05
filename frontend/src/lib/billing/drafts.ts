@@ -32,17 +32,13 @@ const periodEnd = (p: Date) => new Date(Date.UTC(p.getUTCFullYear(), p.getUTCMon
 const num = (v: unknown) => (v == null ? 0 : Number(v));
 
 /**
- * Which rules drive the draft. Confirmed rules first; otherwise the rules read
- * from the contract; only when a contract has neither, the ones derived from
- * invoices. This keeps the two readings from doubling every line.
+ * Which terms drive the draft: every term that has a billing shape and is not
+ * retired. "basis" says whether they are all confirmed yet.
  */
-function pickRules<T extends { status: string; source: string }>(rules: T[]) {
-  const live = rules.filter((r) => r.status !== "retired");
-  const confirmed = live.filter((r) => r.status === "confirmed");
-  if (confirmed.length) return { rules: confirmed, basis: "confirmed" as const };
-  const fromContract = live.filter((r) => r.source === "contract");
-  if (fromContract.length) return { rules: fromContract, basis: "contract" as const };
-  return { rules: live.filter((r) => r.source === "invoices"), basis: "invoices" as const };
+function pickRules<T extends { rule_status: string; shape: string | null }>(lines: T[]) {
+  const live = lines.filter((r) => r.shape && r.rule_status !== "retired");
+  const allConfirmed = live.length > 0 && live.every((r) => r.rule_status === "confirmed");
+  return { rules: live, basis: allConfirmed ? ("confirmed" as const) : ("contract" as const) };
 }
 
 /** Rules in force for the month, excluding one-off and yearly / quarterly ones (listed as a gap instead). */
@@ -72,34 +68,34 @@ export function computeLine(shape: string, params: Record<string, any>, inputs: 
  */
 export async function prepareDrafts(period: Date, db: Db = defaultPrisma, preparedBy?: string, contractIds?: string[]) {
   const contracts = await db.contract.findMany({
-    where: { direction: { in: ["customer", "both"] }, ...(contractIds ? { id: { in: contractIds } } : {}), billing_rules: { some: { status: { not: "retired" } } } },
+    where: { direction: { in: ["customer", "both"] }, ...(contractIds ? { id: { in: contractIds } } : {}), lines: { some: { shape: { not: null }, rule_status: { not: "retired" } } } },
     include: {
       client: { select: { id: true, name: true, placeholder: true, zoho_contact_id: true, gstin: true, billing_currency: true } },
-      billing_rules: { where: { status: { not: "retired" } } },
+      lines: { where: { shape: { not: null }, rule_status: { not: "retired" } }, orderBy: { sort_order: "asc" } },
       purchase_orders: { select: { id: true, po_number: true, value: true, consumed: true, currency: true, valid_from: true, valid_to: true, status: true } },
     },
   });
   const stats = { contracts: contracts.length, drafts: 0, ready: 0, left_alone: 0 };
   for (const c of contracts) {
-    const { rules, basis } = pickRules(c.billing_rules);
-    const { included, skipped } = inForce(rules, period);
+    const { rules, basis } = pickRules(c.lines);
+    const { included, skipped } = inForce(rules.map((l) => ({ ...l, shape: l.shape!, period: l.period ?? "monthly" })), period);
     if (included.length === 0) continue;
     const byCurrency = new Map<string, typeof included>();
     for (const r of included) byCurrency.set(r.currency || "INR", [...(byCurrency.get(r.currency || "INR") ?? []), r]);
     for (const [currency, cur] of byCurrency) {
       const existing = await db.draftEstimate.findUnique({ where: { contract_id_period_currency: { contract_id: c.id, period, currency } }, include: { lines: true } });
       if (existing && ["lead_signed", "finance_checked", "cancelled"].includes(existing.status)) { stats.left_alone++; continue; }
-      const keptInputs = new Map((existing?.lines ?? []).map((l) => [l.rule_id, l.inputs as Record<string, any>]));
+      const keptInputs = new Map((existing?.lines ?? []).map((l) => [l.line_id, l.inputs as Record<string, any>]));
       const lines = cur.map((r, i) => {
         const inputs = keptInputs.get(r.id) ?? (r.shape === "fixed" ? {} : {});
         const res = computeLine(r.shape, r.params as Record<string, any>, inputs);
-        return { rule_id: r.id, service: r.service, description: r.label ?? null, shape: r.shape, params: r.params as Prisma.InputJsonValue, inputs: inputs as Prisma.InputJsonValue, quantity: res.quantity, rate: res.rate, amount: res.amount, explanation: res.explanation, missing: res.missing, sort_order: i };
+        return { line_id: r.id, service: r.service, description: null, shape: r.shape, params: r.params as Prisma.InputJsonValue, inputs: inputs as Prisma.InputJsonValue, quantity: res.quantity, rate: res.rate, amount: res.amount, explanation: res.explanation, missing: res.missing, sort_order: i };
       });
       // The PO: keep a chosen one, else the valid PO in this currency with the most left.
       const validPos = c.purchase_orders.filter((p) => (p.currency || "INR") === currency && p.value != null && (!p.valid_to || p.valid_to >= period) && (!p.valid_from || p.valid_from <= periodEnd(period)));
       const po = (existing?.purchase_order_id && c.purchase_orders.find((p) => p.id === existing.purchase_order_id)) || validPos.sort((a, b) => (num(b.value) - num(b.consumed)) - (num(a.value) - num(a.consumed)))[0] || null;
       const subTotal = lines.reduce((s, l) => s + l.amount, 0);
-      const gaps = buildGaps({ contract: c, client: c.client, rules: cur, basis, lines, skipped, po, currency, subTotal, fxRate: existing?.fx_rate == null ? null : Number(existing.fx_rate) });
+      const gaps = buildGaps({ contract: c, client: c.client, rules: cur.map((r) => ({ status: r.rule_status, shape: r.shape, params: r.params, service: r.service })), basis, lines, skipped, po, currency, subTotal, fxRate: existing?.fx_rate == null ? null : Number(existing.fx_rate) });
       const status = gaps.some((g) => g.blocking) ? "draft" : "ready";
       const data = { client_id: c.client?.id ?? null, status, purchase_order_id: po?.id ?? null, sub_total: subTotal, gaps: gaps as unknown as Prisma.InputJsonValue, prepared_at: new Date(), prepared_by: preparedBy ?? null };
       if (existing) {
@@ -134,7 +130,7 @@ function buildGaps(x: {
   if (contract.review_bucket === "open") gaps.push({ code: "pointers", text: "The contract still has open pointers from the reading.", blocking: false });
   const unchecked = [!contract.paper_checked_at && "contracting", !contract.commercial_checked_at && "the lead", !contract.billing_checked_at && "finance"].filter(Boolean);
   if (unchecked.length) gaps.push({ code: "validation", text: `Not yet validated by ${unchecked.join(", ")}.`, blocking: true });
-  if (x.basis !== "confirmed") gaps.push({ code: "rules_unconfirmed", text: x.basis === "contract" ? "The billing rules are proposed from the contract; the lead has not confirmed them." : "The billing rules come from past invoices only, not from the contract.", blocking: true });
+  if (x.basis !== "confirmed") gaps.push({ code: "rules_unconfirmed", text: `${x.rules.filter((r) => r.status !== "confirmed").length} of ${x.rules.length} billing terms are not confirmed by invoicing yet.`, blocking: true });
   const unconfirmed = x.basis === "confirmed" ? [] : x.rules.filter((r) => r.status !== "confirmed");
   for (const r of x.rules) {
     const miss = missingParams(r.shape, (r.params ?? {}) as Record<string, any>);
@@ -162,8 +158,8 @@ export async function recomputeDraft(draftId: string, db: Db = defaultPrisma) {
   const d = await db.draftEstimate.findUnique({
     where: { id: draftId },
     include: {
-      lines: { orderBy: { sort_order: "asc" }, include: { rule: { select: { status: true, source: true } } } },
-      contract: { include: { client: { select: { id: true, name: true, placeholder: true, zoho_contact_id: true, gstin: true } }, purchase_orders: { select: { id: true, po_number: true, value: true, consumed: true, currency: true, valid_from: true, valid_to: true, status: true } }, billing_rules: { where: { status: { not: "retired" } } } } },
+      lines: { orderBy: { sort_order: "asc" } },
+      contract: { include: { client: { select: { id: true, name: true, placeholder: true, zoho_contact_id: true, gstin: true } }, purchase_orders: { select: { id: true, po_number: true, value: true, consumed: true, currency: true, valid_from: true, valid_to: true, status: true } }, lines: { where: { shape: { not: null }, rule_status: { not: "retired" } } } } },
     },
   });
   if (!d) return null;
@@ -175,10 +171,11 @@ export async function recomputeDraft(draftId: string, db: Db = defaultPrisma) {
     lineRes.push({ service: l.service, missing: res.missing });
     await db.draftEstimateLine.update({ where: { id: l.id }, data: { quantity: res.quantity, rate: res.rate, amount: res.amount, explanation: res.explanation, missing: res.missing } });
   }
-  const { rules, basis } = pickRules(d.contract.billing_rules);
-  const { skipped } = inForce(rules, d.period);
+  const { rules, basis } = pickRules(d.contract.lines);
+  const { skipped } = inForce(rules.map((l) => ({ ...l, shape: l.shape!, period: l.period ?? "monthly" })), d.period);
   const po = d.purchase_order_id ? d.contract.purchase_orders.find((p) => p.id === d.purchase_order_id) ?? null : null;
-  const gaps = buildGaps({ contract: d.contract, client: d.contract.client, rules: rules.filter((r) => d.lines.some((l) => l.rule_id === r.id)), basis, lines: lineRes, skipped, po, currency: d.currency, subTotal, fxRate: d.fx_rate == null ? null : Number(d.fx_rate) });
+  const used = rules.filter((r) => d.lines.some((l) => l.line_id === r.id)).map((r) => ({ status: r.rule_status, shape: r.shape!, params: r.params, service: r.service }));
+  const gaps = buildGaps({ contract: d.contract, client: d.contract.client, rules: used, basis, lines: lineRes, skipped, po, currency: d.currency, subTotal, fxRate: d.fx_rate == null ? null : Number(d.fx_rate) });
   const status = ["lead_signed", "finance_checked", "cancelled"].includes(d.status) ? d.status : gaps.some((g) => g.blocking) ? "draft" : "ready";
   return db.draftEstimate.update({ where: { id: draftId }, data: { sub_total: subTotal, gaps: gaps as unknown as Prisma.InputJsonValue, status } });
 }

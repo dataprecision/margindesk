@@ -12,7 +12,7 @@ export interface ValidationInput {
   review_bucket: string | null;
   documents: unknown;
   client: { placeholder: boolean; zoho_contact_id: string | null; gstin: string | null; billing_currency: string; payment_terms: number | null } | null;
-  billing_rules: { status: string; source: string }[];
+  lines_with_shape: { rule_status: string; shape: string | null }[];
   purchase_orders: { status: string | null; value: unknown; valid_to: Date | string | null }[];
   paper_checked_at: Date | string | null;
   commercial_checked_at: Date | string | null;
@@ -29,11 +29,10 @@ const isWebLink = (d: any) => typeof d?.uri === "string" && /^https?:\/\//i.test
 export function validationChecks(c: ValidationInput): TeamCheck[] {
   const docs = Array.isArray(c.documents) ? (c.documents as any[]) : [];
   const linked = docs.filter(isWebLink);
-  // The rules the lead must confirm: the ones read from the contract where they
-  // exist, otherwise the ones derived from invoices (same choice the drafts make).
-  const all = c.billing_rules.filter((r) => r.status !== "retired");
-  const live = all.some((r) => r.source === "contract") ? all.filter((r) => r.source !== "invoices") : all;
-  const confirmed = live.filter((r) => r.status === "confirmed");
+  // Invoicing confirms the billing shape on every term that has one.
+  const live = c.lines_with_shape.filter((r) => r.shape && r.rule_status !== "retired");
+  const confirmed = live.filter((r) => r.rule_status === "confirmed");
+  const unshaped = c.lines_with_shape.filter((r) => !r.shape && r.rule_status !== "retired").length;
   const usesPo = /required|practice|issued|yes/i.test(c.po_status ?? "");
   const today = new Date();
   const validPo = c.purchase_orders.some((p) => p.value != null && (!p.valid_to || new Date(p.valid_to) >= today));
@@ -46,7 +45,8 @@ export function validationChecks(c: ValidationInput): TeamCheck[] {
     { text: c.bill_to ? `Invoiced to: ${c.bill_to}` : "Invoiced-to entity missing", ok: !!c.bill_to },
   ];
   const commercial = [
-    { text: live.length ? `${confirmed.length} of ${live.length} billing rules confirmed` : "No billing rules on this contract", ok: live.length > 0 && confirmed.length === live.length },
+    { text: live.length ? `${confirmed.length} of ${live.length} billing terms confirmed` : "No billable term with a shape on this contract", ok: live.length > 0 && confirmed.length === live.length },
+    { text: unshaped ? `${unshaped} term${unshaped > 1 ? "s" : ""} still without a billing shape` : "Every term has a billing shape", ok: unshaped === 0 },
     { text: c.spoc_person_id ? "SPOC set from People" : "SPOC not linked to a person", ok: !!c.spoc_person_id },
   ];
   const billing = [

@@ -18,6 +18,25 @@ const fmt = (d: Date) =>
  * person has completed or dismissed.
  */
 export async function generateContractTasks(db: Db = defaultPrisma, today: Date = new Date()) {
+  // Organisation-level agreements (MSA / NDA) ending within 90 days, or whose
+  // notice deadline falls within 90 days: one follow-up per agreement, listing
+  // the contracts it governs.
+  const agreements = await db.agreement.findMany({ where: { end_date: { not: null } }, include: { client: { select: { name: true, legal_person: { select: { name: true } }, owner_person: { select: { name: true } } } }, contracts: { select: { counterparty: true, spoc: true } } } });
+  for (const a of agreements) {
+    const noticeDays = a.notice_days ?? 0;
+    const deadline = new Date(a.end_date!.getTime() - noticeDays * 86_400_000);
+    const daysLeft = Math.round((deadline.getTime() - today.getTime()) / 86_400_000);
+    if (daysLeft > 90 || daysLeft < -365) continue;
+    const auto_key = `agreement-renewal:${a.id}:${a.end_date!.toISOString().slice(0, 10)}`;
+    const existing = await db.contractTask.findUnique({ where: { auto_key } });
+    if (existing) continue;
+    const owner = a.client.legal_person?.name ?? a.client.owner_person?.name ?? a.contracts[0]?.spoc ?? null;
+    await db.contractTask.create({ data: {
+      auto_key, kind: "renewal", contract_id: null, owner, due_date: deadline < today ? today : deadline, created_by: "system",
+      title: `${a.kind} ${daysLeft < 0 ? "expired" : "ends"} ${a.end_date!.toISOString().slice(0, 10)}: ${a.client.name}${noticeDays ? ` (notice ${noticeDays} days, deadline ${deadline.toISOString().slice(0, 10)})` : ""}`,
+      detail: `${a.title}. Governs: ${a.contracts.map((c) => c.counterparty).join("; ") || "no contract linked"}.${a.auto_renewal ? " Auto-renews unless notice is given." : ""}`,
+    } });
+  }
   const from = new Date(today.getTime() - LOOK_BACK_DAYS * DAY);
   const to = new Date(today.getTime() + LOOK_AHEAD_DAYS * DAY);
 

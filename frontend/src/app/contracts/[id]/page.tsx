@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { BUCKET_LABEL, BUCKET_STYLE, POINTER_LABEL, BILLING_TYPES, STAGES, STATUS_STYLE, formatDate, toDateInput, type ContractStatus, type ReviewBucket } from "@/lib/contracts/status";
-import BillingRules, { type BillingRule } from "./billing-rules";
+import type { BillingRule } from "./billing-rules";
+import TermShapePanel, { ShapeSummary, RULE_STATUS_LABEL, RULE_STATUS_STYLE, type TermShape } from "@/components/contracts/term-shape";
 import ContractForm, { type ContractDocument, type ContractFormValues } from "@/components/contracts/contract-form";
 import PurchaseOrders, { type PurchaseOrder } from "./purchase-orders";
 import ValidationChecklist from "./validation-checklist";
@@ -29,6 +30,16 @@ interface Line {
   verified: boolean;
   status: ContractStatus;
   days_left: number | null;
+  shape: string | null;
+  params: Record<string, any>;
+  period: string | null;
+  fx_rate: string | null;
+  input_needed: string | null;
+  advance_or_arrears: string | null;
+  rule_status: "proposed" | "confirmed" | "retired";
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+  rule_evidence: TermShape["rule_evidence"];
 }
 
 interface Task {
@@ -65,6 +76,8 @@ interface Contract {
   client_id: string | null;
   spoc_person: { id: string; name: string; email: string } | null;
   spoc_person_id: string | null;
+  agreement: { id: string; title: string; kind: string; start_date: string | null; end_date: string | null; notice_days: number | null; auto_renewal: boolean | null } | null;
+  agreement_id: string | null;
   documents: ContractDocument[] | null;
   validation: TeamCheck[];
   review_bucket: ReviewBucket | null;
@@ -100,6 +113,7 @@ export default function ContractDetailPage() {
   const [lineDraft, setLineDraft] = useState<Record<string, string>>({});
   const [newLine, setNewLine] = useState<typeof emptyLine | null>(null);
   const [pickingForTerm, setPickingForTerm] = useState(false);
+  const [shapeFor, setShapeFor] = useState<Line | null>(null);
   const [newTask, setNewTask] = useState<{ title: string; due_date: string; owner: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -142,6 +156,7 @@ export default function ContractDetailPage() {
     setHeader({
       counterparty: contract.counterparty,
       client_id: contract.client_id ?? "",
+      agreement_id: contract.agreement_id ?? "",
       basis: contract.basis,
       direction: contract.direction,
       bill_to: contract.bill_to ?? "",
@@ -201,6 +216,16 @@ export default function ContractDetailPage() {
                 {BUCKET_LABEL[contract.review_bucket]}{contract.review_bucket === "open" ? ` (${openPointers.length})` : ""}
               </span>
             )}
+            {contract.agreement && (() => {
+              const agEnd = contract.agreement.end_date ? new Date(contract.agreement.end_date) : null;
+              const beyond = !!(agEnd && contract.end_date && new Date(contract.end_date) > agEnd);
+              const expired = !!(agEnd && agEnd < new Date());
+              return (
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${beyond || expired ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-700"}`}>
+                  Governed by {contract.agreement.kind} {contract.agreement.title.length > 40 ? contract.agreement.title.slice(0, 40) + "…" : contract.agreement.title}{agEnd ? ` (ends ${formatDate(agEnd)})` : ""}{beyond ? " · this contract runs beyond it" : expired ? " · expired" : ""}
+                </span>
+              );
+            })()}
             {contract.verified ? (
               <span className="text-sm text-green-700">Checked by {contract.verified_by} on {formatDate(contract.verified_at)}</span>
             ) : (
@@ -267,13 +292,12 @@ export default function ContractDetailPage() {
         )}
       </section>
 
-      {!isLegal && (contract.billing_rules?.length ?? 0) > 0 && <BillingRules contractId={id} rules={contract.billing_rules ?? []} reload={load} />}
 
       <section className="bg-white rounded-lg shadow">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Terms read from the documents ({contract.lines.length} term{contract.lines.length === 1 ? "" : "s"} from {groups.filter((g) => g.key !== "none").length || "no"} document{groups.filter((g) => g.key !== "none").length === 1 ? "" : "s"})</h2>
-            <p className="text-xs text-gray-500 mt-1">What the documents say, with the clause each term comes from. Use these to check the billing rules above.</p>
+            <h2 className="text-lg font-semibold text-gray-900">Terms and how they are billed ({contract.lines.length} term{contract.lines.length === 1 ? "" : "s"} from {groups.filter((g) => g.key !== "none").length || "no"} document{groups.filter((g) => g.key !== "none").length === 1 ? "" : "s"})</h2>
+            <p className="text-xs text-gray-500 mt-1">Left: what the document says, with the clause it comes from (contracting checks this). Right: how the amount is worked out each period (invoicing sets and confirms this). Draft estimates are built from confirmed terms.</p>
           </div>
           {!newLine && <button onClick={() => setNewLine({ ...emptyLine })} className="text-sm font-medium text-blue-700 hover:underline">Add term</button>}
         </div>
@@ -281,7 +305,7 @@ export default function ContractDetailPage() {
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50">
               <tr>
-                {["Service", "Billing type", "Amount", "Start", "End", "Status", ""].map((h) => (
+                {["Service", "As written", "Start", "End", "Status", "How it's billed", ""].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -336,11 +360,26 @@ export default function ContractDetailPage() {
                         </details>
                       )}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">{l.billing_type}</td>
-                    <td className="px-4 py-3 tabular-nums">{l.currency} {l.amount_text}<div className="text-xs text-gray-500">{l.unit}</div></td>
+                    <td className="px-4 py-3 tabular-nums max-w-xs"><div className="text-xs text-gray-500">{l.billing_type}</div>{l.currency} {l.amount_text}{l.unit && <div className="text-xs text-gray-500">{l.unit}</div>}</td>
                     <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDate(l.start_date)}</td>
                     <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDate(l.end_date)}{l.date_note && <div className="text-xs text-gray-500 whitespace-normal max-w-[12rem]">{l.date_note}</div>}</td>
                     <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_STYLE[l.status]}`}>{l.status}</span></td>
+                    <td className="px-4 py-3 max-w-xs">
+                      <div className="flex items-start gap-2">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${RULE_STATUS_STYLE[l.rule_status]}`}>{RULE_STATUS_LABEL[l.rule_status]}</span>
+                        <ShapeSummary term={l} />
+                      </div>
+                      {!isLegal && l.rule_status !== "retired" && (
+                        <div className="mt-1 text-xs whitespace-nowrap">
+                          <button onClick={() => setShapeFor(l)} className="text-blue-700 hover:underline">{l.shape ? "Edit" : "Set how it's billed"}</button>
+                          {l.shape && l.rule_status !== "confirmed" && <button disabled={saving} onClick={() => call(`/api/contracts/lines/${l.id}`, "PATCH", { rule_status: "confirmed" })} className="ml-3 text-green-700 hover:underline">Confirm</button>}
+                          {l.rule_status === "confirmed" && <button disabled={saving} onClick={() => call(`/api/contracts/lines/${l.id}`, "PATCH", { rule_status: "proposed" })} className="ml-3 text-gray-600 hover:underline">Unconfirm</button>}
+                          <button disabled={saving} onClick={() => call(`/api/contracts/lines/${l.id}`, "PATCH", { rule_status: "retired" })} className="ml-3 text-gray-500 hover:underline">Retire</button>
+                        </div>
+                      )}
+                      {!isLegal && l.rule_status === "retired" && <button disabled={saving} onClick={() => call(`/api/contracts/lines/${l.id}`, "PATCH", { rule_status: "proposed" })} className="mt-1 text-xs text-blue-700 hover:underline">Restore</button>}
+                      {l.confirmed_by && l.rule_status === "confirmed" && <div className="text-xs text-gray-500 mt-1">by {l.confirmed_by} on {formatDate(l.confirmed_at)}</div>}
+                    </td>
                     <td className="px-4 py-3 whitespace-nowrap text-xs">
                       <button
                         onClick={() => {
@@ -453,6 +492,15 @@ export default function ContractDetailPage() {
       </div>
 
       <PurchaseOrders contractId={id} purchaseOrders={contract.purchase_orders} onChange={load} />
+
+      {shapeFor && (
+        <TermShapePanel
+          term={shapeFor}
+          saving={saving}
+          onClose={() => setShapeFor(null)}
+          onSave={(patch) => call(`/api/contracts/lines/${shapeFor.id}`, "PATCH", patch)}
+        />
+      )}
 
       {newLine && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-gray-900/40 p-4 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) setNewLine(null); }}>

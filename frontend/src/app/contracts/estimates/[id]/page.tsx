@@ -10,7 +10,7 @@ import { formatDate } from "@/lib/contracts/status";
 interface Line {
   id: string; rule_id: string | null; service: string; description: string | null; shape: string; params: Record<string, any>; inputs: Record<string, any>;
   quantity: string | null; rate: string | null; amount: string; explanation: string | null; missing: string[];
-  rule: { id: string; status: string; source: string; confidence: string | null; evidence: any } | null;
+  line: { id: string; rule_status: string; confirmed_by: string | null } | null;
 }
 interface Po { id: string; po_number: string; value: string | null; consumed: string | null; currency: string | null; valid_to: string | null; alert_state?: string | null }
 interface Draft {
@@ -132,7 +132,7 @@ export default function DraftEstimatePage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-gray-900">{l.service}{l.description ? <span className="text-gray-500"> · {l.description}</span> : null}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">{def?.label ?? l.shape}{l.rule ? ` · rule ${l.rule.status === "confirmed" ? "confirmed" : `proposed from ${l.rule.source}`}` : ""}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">{def?.label ?? l.shape}{l.line ? ` · term ${l.line.rule_status === "confirmed" ? "confirmed" : "not yet confirmed"}` : ""}</div>
                     {l.explanation && <div className="text-xs text-gray-600 mt-1">{l.explanation}</div>}
                     {l.missing.length > 0 && <div className="text-xs text-amber-700 mt-1">Needs: {l.missing.join(", ")}</div>}
                   </div>

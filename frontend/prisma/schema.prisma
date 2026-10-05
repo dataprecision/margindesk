@@ -42,6 +42,7 @@ model Client {
   contracts        Contract[]
   people           ClientContact[]
   draft_estimates  DraftEstimate[]
+  agreements       Agreement[]
   owner_person     Person?    @relation("ClientOwner", fields: [owner_person_id], references: [id])
   legal_person     Person?    @relation("ClientLegal", fields: [legal_person_id], references: [id])
   finance_person   Person?    @relation("ClientFinance", fields: [finance_person_id], references: [id])
@@ -50,6 +51,32 @@ model Client {
   @@index([zoho_contact_id])
   @@index([contact_type])
   @@index([placeholder])
+}
+
+// Organisation-level paper under a company: the MSA, NDA or framework
+// agreement whose dates govern every SOW / contract row beneath it.
+model Agreement {
+  id               String    @id @default(cuid())
+  client_id        String
+  kind             String    @default("MSA") // MSA | NDA | Framework | Other
+  title            String
+  start_date       DateTime?
+  end_date         DateTime?
+  auto_renewal     Boolean?
+  renewal_note     String?
+  notice_days      Int? // notice period for termination / non-renewal
+  signed           Boolean?
+  documents        Json      @default("[]") // [{ name, uri, type, date, signed }]
+  notes            String?
+  paper_checked_by String?
+  paper_checked_at DateTime?
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+  client           Client    @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  contracts        Contract[]
+
+  @@index([client_id])
+  @@index([end_date])
 }
 
 // A person on the other side: who to write to for business, legal or billing
@@ -1216,6 +1243,7 @@ model Contract {
   end_date        DateTime?
   spoc            String? // person responsible for follow-up, as a name (kept in step with spoc_person)
   spoc_person_id  String? // the employee who follows this contract up
+  agreement_id    String? // the MSA / framework this SOW is governed by
   stage           String                  @default("active") // active | renewal_in_progress | awaiting_signature | awaiting_po | closed
   po_status       String?
   notes           String?
@@ -1242,6 +1270,7 @@ model Contract {
   updated_at      DateTime                @updatedAt
   client          Client?                 @relation(fields: [client_id], references: [id])
   spoc_person     Person?                 @relation("ContractSpoc", fields: [spoc_person_id], references: [id])
+  agreement       Agreement?              @relation(fields: [agreement_id], references: [id], onDelete: SetNull)
   lines           ContractLine[]
   purchase_orders ContractPurchaseOrder[]
   tasks           ContractTask[]
@@ -1252,6 +1281,7 @@ model Contract {
   @@index([client_id])
   @@index([spoc])
   @@index([spoc_person_id])
+  @@index([agreement_id])
   @@index([review_bucket])
 }
 
@@ -1274,14 +1304,28 @@ model ContractLine {
   extra_rule      String?
   verified        Boolean   @default(false)
   sort_order      Int       @default(0)
+  // How the term is billed, in a form the draft estimates can compute from.
+  shape           String? // key into SHAPES; null until invoicing sets it
+  params          Json      @default("{}")
+  period          String? // weekly | monthly | quarterly | yearly | one-time
+  fx_rate         Decimal?  @db.Decimal(12, 4)
+  input_needed    String? // the number someone must supply each period
+  advance_or_arrears String?
+  rule_status     String    @default("proposed") // proposed | confirmed | retired
+  confirmed_by    String?
+  confirmed_at    DateTime?
+  rule_evidence   Json? // what past invoices show for this term
+  billing_rule_id String? // the rule this shape was folded in from
   created_at      DateTime  @default(now())
   updated_at      DateTime  @updatedAt
   contract        Contract  @relation(fields: [contract_id], references: [id], onDelete: Cascade)
   project         Project?  @relation(fields: [project_id], references: [id])
+  draft_lines     DraftEstimateLine[]
 
   @@index([contract_id])
   @@index([end_date])
   @@index([project_id])
+  @@index([rule_status])
 }
 
 // A billing rule is the computable form of a billing term: one shape (see
@@ -1518,6 +1562,7 @@ model DraftEstimateLine {
   id          String   @id @default(cuid())
   draft_id    String
   rule_id     String?
+  line_id     String? // the term this line was computed from
   service     String
   description String?
   shape       String
@@ -1533,7 +1578,9 @@ model DraftEstimateLine {
   updated_at  DateTime @updatedAt
   draft       DraftEstimate @relation(fields: [draft_id], references: [id], onDelete: Cascade)
   rule        BillingRule?  @relation(fields: [rule_id], references: [id], onDelete: SetNull)
+  line        ContractLine? @relation(fields: [line_id], references: [id], onDelete: SetNull)
 
   @@index([draft_id])
   @@index([rule_id])
+  @@index([line_id])
 }

@@ -11,7 +11,7 @@ export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { params }
     const draft = await prisma.draftEstimate.findUnique({
       where: { id },
       include: {
-        lines: { orderBy: { sort_order: "asc" }, include: { rule: { select: { id: true, status: true, source: true, confidence: true, evidence: true } } } },
+        lines: { orderBy: { sort_order: "asc" }, include: { line: { select: { id: true, rule_status: true, confirmed_by: true } } } },
         contract: { select: { id: true, counterparty: true, bill_to: true, spoc: true, basis: true, review_bucket: true, start_date: true, end_date: true, po_status: true, purchase_orders: { select: { id: true, po_number: true, value: true, consumed: true, currency: true, valid_to: true, alert_state: true } } } },
         client: { select: { id: true, name: true, gstin: true, placeholder: true, zoho_contact_id: true, billing_currency: true, payment_terms: true } },
         purchase_order: { select: { id: true, po_number: true, value: true, consumed: true, currency: true, valid_to: true } },
