@@ -51,9 +51,12 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // legal: the Contracts section only
-  if (role === "legal") {
-    if (pathname === "/contracts" || pathname.startsWith("/contracts/") || pathname === "/companies" || pathname.startsWith("/companies/") || pathname === "/help" || pathname.startsWith("/help/")) {
+  // legal: contracts, companies and help only (no drafts or purchase-order consumption);
+  // billing (invoicing team): the Billing section only
+  if (role === "legal" || role === "billing") {
+    const register = pathname === "/contracts" || pathname.startsWith("/contracts/") || pathname === "/companies" || pathname.startsWith("/companies/") || pathname === "/help" || pathname.startsWith("/help/");
+    const legalBlocked = role === "legal" && (pathname.startsWith("/contracts/estimates") || pathname.startsWith("/contracts/purchase-orders"));
+    if (register && !legalBlocked) {
       return NextResponse.next();
     }
     const url = req.nextUrl.clone();

@@ -36,7 +36,7 @@ export const GET = withRole(CONTRACT_API_ROLES, async (req: Request) => {
  * POST /api/estimates { period: "YYYY-MM", contract_ids?: [] }
  * Prepare or refresh the month's drafts. Signed or checked drafts are left alone.
  */
-export const POST = withRole(["owner", "finance"], async (req: Request, { user }) => {
+export const POST = withRole(["owner", "finance", "billing"], async (req: Request, { user }) => {
   try {
     const body = await (req as NextRequest).json();
     if (!monthOk(body.period)) return NextResponse.json({ error: "period must be YYYY-MM" }, { status: 400 });

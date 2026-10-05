@@ -88,7 +88,7 @@ export const PATCH = withRole(CONTRACT_API_ROLES, async (req: Request, { user, p
     // Team sign-offs: { check: "paper" | "commercial" | "billing", done: true | false }
     if (body.check && ["paper", "commercial", "billing"].includes(body.check)) {
       const team = body.check as Team;
-      const roleOk = team === "paper" ? ["owner", "legal", "finance"].includes(user.role) : ["owner", "finance", "pm"].includes(user.role);
+      const roleOk = team === "paper" ? ["owner", "legal"].includes(user.role) : ["owner", "finance", "billing", "pm"].includes(user.role);
       if (!roleOk) return NextResponse.json({ error: `Your role cannot sign off ${team}` }, { status: 403 });
       if (body.done) {
         const full = await prisma.contract.findUnique({ where: { id }, include: { client: { select: { placeholder: true, zoho_contact_id: true, gstin: true, billing_currency: true, payment_terms: true } }, billing_rules: { select: { status: true, source: true } }, purchase_orders: { select: { status: true, value: true, valid_to: true } } } });

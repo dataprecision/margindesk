@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { BUCKET_LABEL, BUCKET_STYLE, POINTER_LABEL, BILLING_TYPES, STAGES, STATUS_STYLE, formatDate, toDateInput, type ContractStatus, type ReviewBucket } from "@/lib/contracts/status";
 import BillingRules, { type BillingRule } from "./billing-rules";
 import ContractForm, { type ContractDocument, type ContractFormValues } from "@/components/contracts/contract-form";
@@ -87,6 +88,8 @@ const inputClass = "w-full px-3 py-2 border border-gray-300 rounded-md text-sm f
 export default function ContractDetailPage() {
   const params = useParams();
   const id = params.id as string;
+  const { data: session } = useSession();
+  const isLegal = session?.user?.role === "legal";
   const [contract, setContract] = useState<Contract | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -247,7 +250,7 @@ export default function ContractDetailPage() {
         )}
       </section>
 
-      <BillingRules contractId={id} rules={contract.billing_rules ?? []} reload={load} />
+      {!isLegal && <BillingRules contractId={id} rules={contract.billing_rules ?? []} reload={load} />}
 
       <section className="bg-white rounded-lg shadow">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">

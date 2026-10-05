@@ -9,7 +9,7 @@ import { TEAM_LABEL, type Team, type TeamCheck } from "@/lib/contracts/validatio
 // way for contracting to attach the SharePoint links the paper check needs.
 
 const inputClass = "w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500";
-const WHO: Record<Team, string> = { paper: "Attach the signed agreement and the current PO from SharePoint, then confirm the basis, dates and invoiced-to entity match them.", commercial: "Confirm every billing rule below (Confirm on each rule) and make sure the SPOC is a person from People.", billing: "Confirm the company is linked to its Zoho Books record, with GSTIN, currency, payment terms, and a valid PO where the customer uses them." };
+const WHO: Record<Team, string> = { paper: "Attach the signed agreement and the current PO from SharePoint, then confirm the basis, dates and invoiced-to entity match them.", commercial: "Invoicing: confirm every billing rule below (Confirm on each rule) against the terms and past invoices, and make sure the SPOC is a person from People.", billing: "Invoicing: confirm the company is linked to its Zoho Books record, with GSTIN, currency, payment terms, and a valid PO where the customer uses them." };
 
 export default function ValidationChecklist({ contractId, checks, documents, saving, call }: {
   contractId: string;
@@ -70,7 +70,7 @@ export default function ValidationChecklist({ contractId, checks, documents, sav
                   <div className="text-xs text-gray-600">Checked on {formatDate(c.checked_at)}. <button disabled={saving} onClick={() => call(`/api/contracts/${contractId}`, "PATCH", { check: c.team, done: false })} className="text-blue-700 hover:underline">Undo</button></div>
                 ) : (
                   <button disabled={saving || blockers.length > 0} title={blockers.length ? blockers.join("; ") : undefined} onClick={() => call(`/api/contracts/${contractId}`, "PATCH", { check: c.team, done: true })} className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-medium disabled:opacity-40">
-                    Mark {c.team === "paper" ? "paper" : c.team === "commercial" ? "commercials" : "billing"} checked
+                    Mark {c.team === "paper" ? "paper" : c.team === "commercial" ? "rules" : "Zoho and tax"} checked
                   </button>
                 )}
               </div>

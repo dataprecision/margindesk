@@ -8,7 +8,7 @@ import { matchDocumentsToPurchaseOrders, recomputePurchaseOrders } from "@/lib/c
  * number, recompute consumption and raise follow-ups. Run nightly after the
  * invoice sync; owner or finance can run it on demand.
  */
-export const POST = withRole(["owner", "finance"], async () => {
+export const POST = withRole(["owner", "finance", "billing"], async () => {
   try {
     const matched = await matchDocumentsToPurchaseOrders();
     const result = await recomputePurchaseOrders();

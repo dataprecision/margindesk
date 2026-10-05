@@ -55,9 +55,11 @@ export default function AccessGuard({ children }: { children: React.ReactNode })
     }
 
     // legal: the Contracts section only
-    if (role === "legal") {
+    if (role === "legal" || role === "billing") {
       const path = pathname || "";
-      if (path === "/contracts" || path.startsWith("/contracts/") || path === "/companies" || path.startsWith("/companies/") || path === "/help" || path.startsWith("/help/") || path.startsWith("/auth")) {
+      const register = path === "/contracts" || path.startsWith("/contracts/") || path === "/companies" || path.startsWith("/companies/") || path === "/help" || path.startsWith("/help/") || path.startsWith("/auth");
+      const legalBlocked = role === "legal" && (path.startsWith("/contracts/estimates") || path.startsWith("/contracts/purchase-orders"));
+      if (register && !legalBlocked) {
         setAllowed(true);
       } else {
         setAllowed(false);
