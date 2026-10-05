@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BUCKET_LABEL, BUCKET_ORDER, BUCKET_STYLE, STATUS_ORDER, STATUS_STYLE, formatDate, type ContractStatus, type ReviewBucket } from "@/lib/contracts/status";
+import { BUCKET_LABEL, BUCKET_ORDER, BUCKET_STYLE, STAGES, STATUS_ORDER, STATUS_STYLE, formatDate, type ContractStatus, type ReviewBucket } from "@/lib/contracts/status";
 
 interface ContractRow {
   id: string;
@@ -44,6 +44,7 @@ export default function ContractsPage() {
   const [direction, setDirection] = useState("");
   const [spoc, setSpoc] = useState("");
   const [bucket, setBucket] = useState<ReviewBucket | "">("");
+  const [stage, setStage] = useState("");
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -78,6 +79,7 @@ export default function ContractsPage() {
         (!direction || c.direction === direction) &&
         (!spoc || c.spoc === spoc) &&
         (!bucket || c.review_bucket === bucket) &&
+        (!stage || c.stage === stage) &&
         (!search || `${c.counterparty} ${c.client?.name ?? ""} ${c.basis} ${c.spoc ?? ""}`.toLowerCase().includes(search.toLowerCase()))
     )
     .sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) || a.counterparty.localeCompare(b.counterparty));
@@ -110,6 +112,7 @@ export default function ContractsPage() {
         >
           <div className="text-2xl font-bold text-gray-900">{contracts.length}</div>
           <div className="text-sm text-gray-600">All contracts</div>
+          <div className="text-xs text-gray-400">click a card to filter</div>
         </button>
         {STATUS_ORDER.filter((s) => counts[s]).map((s) => (
           <button
@@ -152,12 +155,25 @@ export default function ContractsPage() {
             <option key={v} value={v}>{l}</option>
           ))}
         </select>
+        <select value={status} onChange={(e) => setStatus(e.target.value as ContractStatus | "")} className="px-3 py-2 border border-gray-300 rounded-md text-sm">
+          <option value="">Any status (dates)</option>
+          {STATUS_ORDER.map((s) => <option key={s} value={s}>{s}{counts[s] ? ` (${counts[s]})` : ""}</option>)}
+        </select>
+        <select value={stage} onChange={(e) => setStage(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-md text-sm">
+          <option value="">Any stage</option>
+          {STAGES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+        </select>
+        <select value={bucket} onChange={(e) => setBucket(e.target.value as ReviewBucket | "")} className="px-3 py-2 border border-gray-300 rounded-md text-sm">
+          <option value="">Any review state</option>
+          {BUCKET_ORDER.map((b) => <option key={b} value={b}>{BUCKET_LABEL[b]}</option>)}
+        </select>
         <select value={spoc} onChange={(e) => setSpoc(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-md text-sm">
           <option value="">All SPOCs</option>
           {spocs.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
+        {(status || stage || bucket || spoc || direction || search) && <button onClick={() => { setStatus(""); setStage(""); setBucket(""); setSpoc(""); setDirection(""); setSearch(""); }} className="px-3 py-2 text-sm text-blue-700 hover:underline">Clear filters</button>}
         <span className="ml-auto self-center text-sm text-gray-500">{visible.length} of {contracts.length}</span>
       </div>
 
