@@ -48,6 +48,21 @@ for (const p of await prisma.contractPurchaseOrder.findMany({ where: { document:
   stats.pos_linked++;
   if (apply) await prisma.contractPurchaseOrder.update({ where: { id: p.id }, data: { document: links[id], notes: undefined } });
 }
+// Each company's SharePoint folders, derived from where its resolved documents sit
+// (_company_folders.json, keyed by the contract's read file). Only filled where empty.
+const companyFolders = JSON.parse(readFileSync(join(DIR, "_company_folders.json"), "utf8"));
+stats.companies_mapped = 0;
+for (const c of await prisma.contract.findMany({ where: { client_id: { not: null }, read_file: { not: null } }, select: { read_file: true, client: { select: { id: true, sharepoint_folders: true } } } })) {
+  const keys = (c.read_file ?? "").split("+");
+  const folders = keys.flatMap((k) => companyFolders[k] ?? []);
+  if (!folders.length || !c.client) continue;
+  const existing = Array.isArray(c.client.sharepoint_folders) ? c.client.sharepoint_folders : [];
+  if (existing.length) continue;
+  const unique = folders.filter((f, i) => folders.findIndex((g) => g.path === f.path) === i);
+  stats.companies_mapped++;
+  if (apply) await prisma.client.update({ where: { id: c.client.id }, data: { sharepoint_folders: unique } });
+}
+
 console.log(`Database: ${dbName}   Mode: ${apply ? "APPLY" : "dry run"}`);
 console.log(stats);
 await prisma.$disconnect();
