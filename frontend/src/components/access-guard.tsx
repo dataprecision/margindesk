@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 // Pages that PM and readonly users can access
 const PM_ALLOWED_PATHS = [
   "/dashboard",
+  "/help",
   "/pods",
   "/project-costs",
   "/project-hours",
@@ -56,7 +57,7 @@ export default function AccessGuard({ children }: { children: React.ReactNode })
     // legal: the Contracts section only
     if (role === "legal") {
       const path = pathname || "";
-      if (path === "/contracts" || path.startsWith("/contracts/") || path === "/companies" || path.startsWith("/companies/") || path.startsWith("/auth")) {
+      if (path === "/contracts" || path.startsWith("/contracts/") || path === "/companies" || path.startsWith("/companies/") || path === "/help" || path.startsWith("/help/") || path.startsWith("/auth")) {
         setAllowed(true);
       } else {
         setAllowed(false);

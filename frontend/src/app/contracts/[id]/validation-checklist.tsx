@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { formatDate } from "@/lib/contracts/status";
 import { TEAM_LABEL, type Team, type TeamCheck } from "@/lib/contracts/validation";
 
@@ -34,6 +35,7 @@ export default function ValidationChecklist({ contractId, checks, documents, sav
           <h2 className="text-lg font-semibold text-gray-900">Validation {allDone ? "complete" : `(${checks.filter((c) => c.done).length} of 3 teams)`}</h2>
           <p className="text-xs text-gray-500 mt-1">Three teams check this contract against the documents. Estimates can be raised only once all three have signed off.</p>
         </div>
+        <Link href="/help/contract-validation" className="text-sm text-blue-700 hover:underline">How to validate (guide)</Link>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-gray-200">
         {checks.map((c) => {

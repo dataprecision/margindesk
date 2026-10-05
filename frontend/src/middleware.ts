@@ -5,6 +5,7 @@ import { getToken } from "next-auth/jwt";
 // Pages that PM and readonly users can access
 const PM_ALLOWED_PATHS = [
   "/dashboard",
+  "/help",
   "/pods",
   "/project-costs",
   "/project-hours",
@@ -52,7 +53,7 @@ export async function middleware(req: NextRequest) {
 
   // legal: the Contracts section only
   if (role === "legal") {
-    if (pathname === "/contracts" || pathname.startsWith("/contracts/") || pathname === "/companies" || pathname.startsWith("/companies/")) {
+    if (pathname === "/contracts" || pathname.startsWith("/contracts/") || pathname === "/companies" || pathname.startsWith("/companies/") || pathname === "/help" || pathname.startsWith("/help/")) {
       return NextResponse.next();
     }
     const url = req.nextUrl.clone();

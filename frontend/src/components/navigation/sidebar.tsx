@@ -104,6 +104,7 @@ const ICONS = {
   reports: "M4 20V10m6 10V4m6 16v-7m6 7H2",
   setup: "M12 15a3 3 0 100-6 3 3 0 000 6zm7.4-3a7.4 7.4 0 00-.1-1l2-1.5-2-3.4-2.4 1a7.4 7.4 0 00-1.7-1L14.8 3h-4l-.4 2.6a7.4 7.4 0 00-1.7 1l-2.4-1-2 3.4L6.6 11a7.4 7.4 0 000 2l-2 1.5 2 3.4 2.4-1a7.4 7.4 0 001.7 1l.4 2.6h4l.4-2.6a7.4 7.4 0 001.7-1l2.4 1 2-3.4-2-1.5a7.4 7.4 0 00.1-1z",
   chevron: "M9 6l6 6-6 6",
+  help: "M12 21a9 9 0 100-18 9 9 0 000 18zm-.5-6.5V14a2.5 2.5 0 011.2-2.1c.9-.6 1.3-1.1 1.3-1.9a2 2 0 00-4 0M12 17.5h.01",
 } as const;
 
 function Icon({ name, className = "h-5 w-5" }: { name: keyof typeof ICONS; className?: string }) {
@@ -229,6 +230,10 @@ export default function Sidebar() {
       </nav>
 
       <div className="border-t border-gray-200 px-2 py-3">
+        <Link href="/help" title="Help" className={`mb-1 flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium ${isCurrent("/help") ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"}`}>
+          <Icon name="help" />
+          <span className="hidden lg:inline">Help</span>
+        </Link>
         {setup.length > 0 && (
           <div className="mb-2">
             {groupHeader("setup", "Setup", "setup")}
