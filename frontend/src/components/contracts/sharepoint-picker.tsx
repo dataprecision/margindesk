@@ -50,6 +50,7 @@ export default function SharePointPicker({ clientId, alreadyAttached, onAttach, 
         <div className="text-sm text-gray-700">{message || "No files found in the mapped folders."} {folders.length === 0 && <>Map a folder on the <Link href={`/companies/${clientId}`} className="text-blue-700 hover:underline">company page</Link>.</>}</div>
       ) : (
         <>
+          {message && <div className="text-xs text-amber-800">{message}</div>}
           <input type="search" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter by file name" className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
           <ul className="max-h-72 overflow-y-auto divide-y divide-gray-200 rounded-md border border-gray-200 bg-white">
             {visible.map((f) => {

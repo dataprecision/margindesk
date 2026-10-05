@@ -18,12 +18,18 @@ export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { params }
     if (folders.length === 0) return NextResponse.json({ folders: [], files: [], message: "No SharePoint folder is mapped to this company yet." });
     const files: SpFile[] = [];
     const errors: string[] = [];
+    const unreadable: string[] = [];
     for (const f of folders) {
       try { files.push(...(await listFolder(f, 1)).filter((x) => !x.is_folder)); }
-      catch (e: any) { if (e instanceof SharePointAccessError) return NextResponse.json({ folders, files: [], not_connected: true, message: e.message }); errors.push(`${f.label}: ${e.message}`); }
+      catch (e: any) { if (e instanceof SharePointAccessError) unreadable.push(f.label); else errors.push(`${f.label}: ${e.message}`); }
     }
     files.sort((a, b) => (b.modified ?? "").localeCompare(a.modified ?? ""));
-    return NextResponse.json({ folders, files, errors });
+    // Only when every mapped folder is refused is MarginDesk itself not connected.
+    const notConnected = unreadable.length === folders.length;
+    return NextResponse.json({
+      folders, files, errors, unreadable, not_connected: notConnected,
+      message: notConnected ? new SharePointAccessError().message : unreadable.length ? `Not readable (outside the folders MarginDesk was granted): ${unreadable.join("; ")}.` : "",
+    });
   } catch (error: any) {
     console.error("Error listing company documents:", error);
     return NextResponse.json({ error: error?.message || "Failed to list documents" }, { status: 500 });
