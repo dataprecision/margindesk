@@ -8,7 +8,7 @@ import { blockersFor, validationChecks, type Team } from "@/lib/contracts/valida
 /**
  * GET /api/contracts/[id]
  */
-export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { params }) => {
+export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { user, params }) => {
   try {
     const { id } = await params;
     const contract = await prisma.contract.findUnique({
@@ -30,6 +30,8 @@ export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { params }
       status: contractStatus(contract.start_date, contract.end_date, today),
       days_left: daysLeft(contract.end_date, today),
       validation: validationChecks(contract),
+      // The contracting team checks the paper, not how it is billed.
+      billing_rules: user.role === "legal" ? [] : contract.billing_rules,
       lines: contract.lines.map((l) => ({
         ...l,
         status: contractStatus(l.start_date, l.end_date, today),

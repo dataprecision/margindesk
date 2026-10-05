@@ -11,9 +11,10 @@ import { TEAM_LABEL, type Team, type TeamCheck } from "@/lib/contracts/validatio
 const inputClass = "w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500";
 const WHO: Record<Team, string> = { paper: "Attach the signed agreement and the current PO from SharePoint, then confirm the basis, dates and invoiced-to entity match them.", commercial: "Invoicing: confirm every billing rule below (Confirm on each rule) against the terms and past invoices, and make sure the SPOC is a person from People.", billing: "Invoicing: confirm the company is linked to its Zoho Books record, with GSTIN, currency, payment terms, and a valid PO where the customer uses them." };
 
-export default function ValidationChecklist({ contractId, checks, documents, saving, call }: {
+export default function ValidationChecklist({ contractId, checks, documents, saving, call, role }: {
   contractId: string;
   checks: TeamCheck[];
+  role?: string;
   documents: { name: string; uri?: string | null; type?: string | null }[];
   saving: boolean;
   call: (url: string, method: string, body?: unknown) => Promise<boolean>;
@@ -40,6 +41,18 @@ export default function ValidationChecklist({ contractId, checks, documents, sav
       <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-gray-200">
         {checks.map((c) => {
           const blockers = c.items.filter((i) => !i.ok && !(c.team === "paper" && /End date missing/.test(i.text)));
+          const mine = role === "legal" ? c.team === "paper" : role === "billing" ? c.team !== "paper" : true;
+          if (!mine) {
+            return (
+              <div key={c.team} className="px-6 py-4">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-gray-900">{TEAM_LABEL[c.team]}</h3>
+                  {c.done ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Checked</span> : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Pending</span>}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">{c.team === "paper" ? "Contracting's part." : "Invoicing's part."}{c.done && c.checked_at ? ` Checked on ${formatDate(c.checked_at)}.` : ""}</p>
+              </div>
+            );
+          }
           return (
             <div key={c.team} className="px-6 py-4">
               <div className="flex items-center justify-between gap-2">

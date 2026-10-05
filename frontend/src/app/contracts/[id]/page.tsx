@@ -208,7 +208,7 @@ export default function ContractDetailPage() {
       {error && <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">{error}</div>}
 
       {contract.direction !== "vendor" && contract.validation && (
-        <ValidationChecklist contractId={id} checks={contract.validation} documents={documents} saving={saving} call={call} />
+        <ValidationChecklist contractId={id} checks={contract.validation} documents={documents} saving={saving} call={call} role={session?.user?.role} />
       )}
 
       <section className="bg-white rounded-lg shadow p-6">
@@ -250,7 +250,7 @@ export default function ContractDetailPage() {
         )}
       </section>
 
-      {!isLegal && <BillingRules contractId={id} rules={contract.billing_rules ?? []} reload={load} />}
+      {!isLegal && (contract.billing_rules?.length ?? 0) > 0 && <BillingRules contractId={id} rules={contract.billing_rules ?? []} reload={load} />}
 
       <section className="bg-white rounded-lg shadow">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
