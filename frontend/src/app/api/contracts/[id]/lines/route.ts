@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { missingParams } from "@/lib/billing/shapes";
 import { prisma } from "@/lib/prisma";
 import { withRole } from "@/lib/auth/protect-route";
 import { CONTRACT_API_ROLES, audit, parseAmount, parseDate } from "@/lib/contracts/api";
@@ -31,10 +32,15 @@ export const POST = withRole(CONTRACT_API_ROLES, async (req: Request, { user, pa
         read_from: body.read_from || "Contract",
         source_document: body.source_document || null,
         quote: body.quote || null,
-        shape: body.shape || null,
-        params: typeof body.params === "object" && body.params ? body.params : {},
-        period: body.period || null,
-        input_needed: body.input_needed || null,
+        ...(user.role === "legal" ? {} : {
+          shape: body.shape || null,
+          params: typeof body.params === "object" && body.params ? body.params : {},
+          period: body.period || null,
+          input_needed: body.input_needed || null,
+          advance_or_arrears: body.advance_or_arrears || null,
+          fx_rate: body.fx_rate === "" || body.fx_rate == null ? null : Number(body.fx_rate),
+          ...(body.rule_status === "confirmed" && body.shape && missingParams(body.shape, body.params ?? {}).length === 0 ? { rule_status: "confirmed", confirmed_by: user.name || user.email, confirmed_at: new Date() } : {}),
+        }),
         project_id: body.project_id || null,
         sort_order: contract._count.lines,
       },

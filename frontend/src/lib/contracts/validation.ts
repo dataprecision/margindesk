@@ -20,7 +20,7 @@ export interface ValidationInput {
 }
 
 export type Team = "paper" | "commercial" | "billing";
-export const TEAM_LABEL: Record<Team, string> = { paper: "Contracting (legal)", commercial: "Billing rules (invoicing)", billing: "Zoho and tax (invoicing)" };
+export const TEAM_LABEL: Record<Team, string> = { paper: "Contracting (legal)", commercial: "Billing lines (invoicing)", billing: "Zoho and tax (invoicing)" };
 
 export interface TeamCheck { team: Team; done: boolean; checked_at: Date | string | null; missing: string[]; items: { text: string; ok: boolean }[] }
 
@@ -45,8 +45,8 @@ export function validationChecks(c: ValidationInput): TeamCheck[] {
     { text: c.bill_to ? `Invoiced to: ${c.bill_to}` : "Invoiced-to entity missing", ok: !!c.bill_to },
   ];
   const commercial = [
-    { text: live.length ? `${confirmed.length} of ${live.length} billing terms confirmed` : "No billable term with a shape on this contract", ok: live.length > 0 && confirmed.length === live.length },
-    { text: unshaped ? `${unshaped} term${unshaped > 1 ? "s" : ""} still without a billing shape` : "Every term has a billing shape", ok: unshaped === 0 },
+    { text: live.length ? `${confirmed.length} of ${live.length} billing lines confirmed` : "No billing line with a shape on this contract", ok: live.length > 0 && confirmed.length === live.length },
+    { text: unshaped ? `${unshaped} billing line${unshaped > 1 ? "s" : ""} still without a shape` : "Every billing line has a shape", ok: unshaped === 0 },
     { text: c.spoc_person_id ? "SPOC set from People" : "SPOC not linked to a person", ok: !!c.spoc_person_id },
   ];
   const billing = [

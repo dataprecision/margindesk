@@ -130,7 +130,7 @@ function buildGaps(x: {
   if (contract.review_bucket === "open") gaps.push({ code: "pointers", text: "The contract still has open pointers from the reading.", blocking: false });
   const unchecked = [!contract.paper_checked_at && "contracting", !contract.commercial_checked_at && "the lead", !contract.billing_checked_at && "finance"].filter(Boolean);
   if (unchecked.length) gaps.push({ code: "validation", text: `Not yet validated by ${unchecked.join(", ")}.`, blocking: true });
-  if (x.basis !== "confirmed") gaps.push({ code: "rules_unconfirmed", text: `${x.rules.filter((r) => r.status !== "confirmed").length} of ${x.rules.length} billing terms are not confirmed by invoicing yet.`, blocking: true });
+  if (x.basis !== "confirmed") gaps.push({ code: "rules_unconfirmed", text: `${x.rules.filter((r) => r.status !== "confirmed").length} of ${x.rules.length} billing lines are not confirmed by invoicing yet.`, blocking: true });
   const unconfirmed = x.basis === "confirmed" ? [] : x.rules.filter((r) => r.status !== "confirmed");
   for (const r of x.rules) {
     const miss = missingParams(r.shape, (r.params ?? {}) as Record<string, any>);

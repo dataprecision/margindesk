@@ -1316,16 +1316,20 @@ model ContractLine {
   confirmed_at    DateTime?
   rule_evidence   Json? // what past invoices show for this term
   billing_rule_id String? // the rule this shape was folded in from
+  replaces_line_id String? // the earlier version this line took over from, on its start date
   created_at      DateTime  @default(now())
   updated_at      DateTime  @updatedAt
   contract        Contract  @relation(fields: [contract_id], references: [id], onDelete: Cascade)
   project         Project?  @relation(fields: [project_id], references: [id])
   draft_lines     DraftEstimateLine[]
+  replaces        ContractLine?  @relation("LineVersions", fields: [replaces_line_id], references: [id], onDelete: SetNull)
+  replaced_by     ContractLine[] @relation("LineVersions")
 
   @@index([contract_id])
   @@index([end_date])
   @@index([project_id])
   @@index([rule_status])
+  @@index([replaces_line_id])
 }
 
 // A billing rule is the computable form of a billing term: one shape (see

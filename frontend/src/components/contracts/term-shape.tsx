@@ -105,7 +105,7 @@ export function ShapeSummary({ term }: { term: TermShape }) {
   );
 }
 
-function TryIt({ term }: { term: { shape: string; params: Record<string, any>; currency: string } }) {
+export function TryIt({ term }: { term: { shape: string; params: Record<string, any>; currency: string } }) {
   const shape = SHAPE_BY_KEY[term.shape];
   const [inputs, setInputs] = useState<Record<string, any>>({});
   if (!shape) return null;

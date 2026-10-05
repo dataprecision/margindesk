@@ -26,6 +26,8 @@ export const PATCH = withRole(CONTRACT_API_ROLES, async (req: Request, { user, p
     if ("end_date" in body) data.end_date = parseDate(body.end_date);
     if ("project_id" in body) data.project_id = body.project_id || null;
     if ("verified" in body) data.verified = !!body.verified;
+    // The billing half belongs to invoicing: contracting can change the wording, not how it is billed.
+    if (user.role === "legal") for (const k of ["shape", "params", "period", "fx_rate", "input_needed", "advance_or_arrears", "rule_status"]) delete body[k];
     // Billing shape (invoicing): shape, its numbers, period; confirm only when every required number is present.
     if ("shape" in body) data.shape = body.shape || null;
     if ("params" in body && typeof body.params === "object") data.params = body.params;
