@@ -12,6 +12,7 @@ interface Contact {
 }
 interface Company {
   id: string; name: string; contact_type: string | null; placeholder: boolean; zoho_contact_id: string | null; zoho_status: string | null;
+  sharepoint_folders: { label: string; drive_id: string; path: string; web_url?: string | null }[];
   gstin: string | null; pan: string | null; billing_currency: string; payment_terms: number | null; primary_email: string | null; primary_phone: string | null; website: string | null; notes: string | null;
   owner_person: PersonRef | null; legal_person: PersonRef | null; finance_person: PersonRef | null;
   suggested_match: { id: string; name: string; gstin: string | null; pan: string | null; contact_type: string | null } | null;
@@ -36,6 +37,10 @@ export default function CompanyPage() {
   const [saving, setSaving] = useState(false);
   const [newContact, setNewContact] = useState<typeof emptyContact | null>(null);
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
+  const [folderLink, setFolderLink] = useState("");
+  const [folderLabel, setFolderLabel] = useState("");
+  const [sp, setSp] = useState<{ connected: boolean; message?: string } | null>(null);
+  useEffect(() => { fetch("/api/sharepoint/status").then((r) => r.json()).then(setSp).catch(() => setSp({ connected: false })); }, []);
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/companies/${id}`);
@@ -119,6 +124,26 @@ export default function CompanyPage() {
           {fact("Phone", company.primary_phone)}
           {fact("Website", company.website)}
         </dl>
+      </section>
+
+      <section className="bg-white rounded-lg shadow p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-1">SharePoint folders</h2>
+        <p className="text-xs text-gray-500 mb-3">The folders whose files belong to this company. Contracts pick their documents from these folders and see nothing outside them. {sp && !sp.connected && <span className="text-amber-700">MarginDesk cannot read SharePoint yet: the Microsoft 365 admin has to grant it read access. Mapped folders are kept and used once that is done.</span>}</p>
+        <ul className="space-y-1 text-sm mb-3">
+          {(company.sharepoint_folders ?? []).map((f, i) => (
+            <li key={i} className="flex items-center gap-2">
+              <span className="text-gray-900">{f.web_url ? <a href={f.web_url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{f.label}</a> : f.label}</span>
+              <span className="text-xs text-gray-500 truncate">{f.path}</span>
+              <button disabled={saving} onClick={() => call(`/api/companies/${id}/documents`, "POST", { remove: i })} className="ml-auto text-xs text-red-600 hover:underline">unmap</button>
+            </li>
+          ))}
+          {(company.sharepoint_folders ?? []).length === 0 && <li className="text-gray-400">No folder mapped yet.</li>}
+        </ul>
+        <form className="grid grid-cols-1 md:grid-cols-5 gap-2" onSubmit={async (e) => { e.preventDefault(); if (await call(`/api/companies/${id}/documents`, "POST", { folder_link: folderLink, label: folderLabel })) { setFolderLink(""); setFolderLabel(""); } }}>
+          <input className={`${inputClass} md:col-span-3`} value={folderLink} onChange={(e) => setFolderLink(e.target.value)} placeholder="Paste the folder's SharePoint link (https://…)" />
+          <input className={inputClass} value={folderLabel} onChange={(e) => setFolderLabel(e.target.value)} placeholder="Label, e.g. Agreements" />
+          <button type="submit" disabled={saving || !folderLink} className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm font-medium disabled:opacity-50">Map folder</button>
+        </form>
       </section>
 
       <section className="bg-white rounded-lg shadow p-6">

@@ -31,6 +31,7 @@ model Client {
   notes            String?
   placeholder      Boolean    @default(false) // created here before the Zoho record existed
   suggested_zoho_contact_id String? // nightly match for a placeholder, until a person confirms
+  sharepoint_folders Json  @default("[]") // [{ label, drive_id, path, web_url }]: the SharePoint folders whose files belong to this company
   owner_person_id  String? // our business owner for this company
   legal_person_id  String? // our legal owner
   finance_person_id String? // our finance / billing owner

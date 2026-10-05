@@ -223,7 +223,7 @@ export default function ContractDetailPage() {
       {error && <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">{error}</div>}
 
       {contract.direction !== "vendor" && contract.validation && (
-        <ValidationChecklist contractId={id} checks={contract.validation} documents={documents} saving={saving} call={call} role={session?.user?.role} />
+        <ValidationChecklist contractId={id} clientId={contract.client?.id ?? contract.client_id} checks={contract.validation} documents={documents} saving={saving} call={call} role={session?.user?.role} />
       )}
 
       <section className="bg-white rounded-lg shadow p-6">
