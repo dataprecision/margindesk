@@ -30,6 +30,7 @@ export const POST = withRole(CONTRACT_API_ROLES, async (req: Request, { user, pa
         end_date: parseDate(body.end_date),
         read_from: body.read_from || "Contract",
         source_document: body.source_document || null,
+        quote: body.quote || null,
         project_id: body.project_id || null,
         sort_order: contract._count.lines,
       },

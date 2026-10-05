@@ -9,6 +9,7 @@ import BillingRules, { type BillingRule } from "./billing-rules";
 import ContractForm, { type ContractDocument, type ContractFormValues } from "@/components/contracts/contract-form";
 import PurchaseOrders, { type PurchaseOrder } from "./purchase-orders";
 import ValidationChecklist from "./validation-checklist";
+import SharePointPicker from "@/components/contracts/sharepoint-picker";
 import type { TeamCheck } from "@/lib/contracts/validation";
 
 interface Line {
@@ -82,7 +83,7 @@ interface Contract {
   billing_rules: BillingRule[];
 }
 
-const emptyLine = { service: "", billing_type: "Fixed monthly fee", amount_text: "", unit: "per month", currency: "INR", start_date: "", end_date: "" };
+const emptyLine = { service: "", billing_type: "Fixed monthly fee", amount_text: "", unit: "per month", currency: "INR", start_date: "", end_date: "", source_document: "", quote: "", read_from: "Contract" };
 const inputClass = "w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500";
 
 export default function ContractDetailPage() {
@@ -98,6 +99,7 @@ export default function ContractDetailPage() {
   const [editingLine, setEditingLine] = useState<string | null>(null);
   const [lineDraft, setLineDraft] = useState<Record<string, string>>({});
   const [newLine, setNewLine] = useState<typeof emptyLine | null>(null);
+  const [pickingForTerm, setPickingForTerm] = useState(false);
   const [newTask, setNewTask] = useState<{ title: string; due_date: string; owner: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -355,30 +357,8 @@ export default function ContractDetailPage() {
                 )
                 ),
               ])}
-              {contract.lines.length === 0 && !newLine && (
+              {contract.lines.length === 0 && (
                 <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">No terms recorded. The agreement for this counterparty has not been read yet.</td></tr>
-              )}
-              {newLine && (
-                <tr className="bg-blue-50">
-                  <td className="px-4 py-3"><input className={inputClass} placeholder="Service" value={newLine.service} onChange={(e) => setNewLine({ ...newLine, service: e.target.value })} /></td>
-                  <td className="px-4 py-3">
-                    <select className={inputClass} value={newLine.billing_type} onChange={(e) => setNewLine({ ...newLine, billing_type: e.target.value })}>
-                      {BILLING_TYPES.map((t) => <option key={t}>{t}</option>)}
-                    </select>
-                  </td>
-                  <td className="px-4 py-3 space-y-1">
-                    <input className={inputClass} placeholder="Amount" value={newLine.amount_text} onChange={(e) => setNewLine({ ...newLine, amount_text: e.target.value })} />
-                    <input className={inputClass} placeholder="per month" value={newLine.unit} onChange={(e) => setNewLine({ ...newLine, unit: e.target.value })} />
-                  </td>
-                  <td className="px-4 py-3"><input type="date" className={inputClass} value={newLine.start_date} onChange={(e) => setNewLine({ ...newLine, start_date: e.target.value })} /></td>
-                  <td className="px-4 py-3"><input type="date" className={inputClass} value={newLine.end_date} onChange={(e) => setNewLine({ ...newLine, end_date: e.target.value })} /></td>
-                  <td className="px-4 py-3" colSpan={2}>
-                    <div className="flex gap-2">
-                      <button disabled={saving} onClick={async () => { if (await call(`/api/contracts/${id}/lines`, "POST", { ...newLine, read_from: "Entered by hand" })) setNewLine(null); }} className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-medium disabled:opacity-50">Add</button>
-                      <button onClick={() => setNewLine(null)} className="px-3 py-1 border border-gray-300 rounded text-xs">Cancel</button>
-                    </div>
-                  </td>
-                </tr>
               )}
             </tbody>
           </table>
@@ -473,6 +453,73 @@ export default function ContractDetailPage() {
       </div>
 
       <PurchaseOrders contractId={id} purchaseOrders={contract.purchase_orders} onChange={load} />
+
+      {newLine && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-gray-900/40 p-4 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) setNewLine(null); }}>
+          <form
+            className="w-full max-w-2xl rounded-lg bg-white shadow-xl p-6 space-y-4 mt-8"
+            onSubmit={async (e) => { e.preventDefault(); if (await call(`/api/contracts/${id}/lines`, "POST", newLine)) { setNewLine(null); setPickingForTerm(false); } }}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Add a term</h2>
+                <p className="text-xs text-gray-500 mt-1">A term is one thing the paper says about billing: a fee, a rate, an hours bundle, a milestone. Say which document it comes from.</p>
+              </div>
+              <button type="button" onClick={() => setNewLine(null)} className="text-sm text-gray-500 hover:text-gray-900">Close</button>
+            </div>
+
+            <div>
+              <label className="block text-sm text-gray-700">Document the term comes from
+                <select className={inputClass} value={pickingForTerm ? "__pick" : newLine.source_document} onChange={(e) => { if (e.target.value === "__pick") setPickingForTerm(true); else { setPickingForTerm(false); setNewLine({ ...newLine, source_document: e.target.value }); } }}>
+                  <option value="">Not recorded</option>
+                  {documents.map((d, i) => <option key={i} value={d.name}>{d.name}{d.type ? ` (${d.type})` : ""}</option>)}
+                  {contract.client_id && <option value="__pick">Pick a new document from SharePoint…</option>}
+                </select>
+              </label>
+              {pickingForTerm && contract.client_id && (
+                <div className="mt-2">
+                  <SharePointPicker
+                    clientId={contract.client_id}
+                    alreadyAttached={documents.map((d) => d.uri ?? "").filter(Boolean)}
+                    saving={saving}
+                    onClose={() => setPickingForTerm(false)}
+                    onAttach={async (files) => {
+                      const ok = await call(`/api/contracts/${id}`, "PATCH", { documents: [...documents, ...files.map((f) => ({ ...f, type: "Link" }))] });
+                      if (ok && files[0]) setNewLine((n) => (n ? { ...n, source_document: files[0].name } : n));
+                      return ok;
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <label className="block text-sm text-gray-700 md:col-span-2">Service<input className={inputClass} value={newLine.service} onChange={(e) => setNewLine({ ...newLine, service: e.target.value })} placeholder="e.g. Adobe Analytics consulting retainer" required /></label>
+              <label className="block text-sm text-gray-700">Billing type
+                <select className={inputClass} value={newLine.billing_type} onChange={(e) => setNewLine({ ...newLine, billing_type: e.target.value })}>{BILLING_TYPES.map((t) => <option key={t}>{t}</option>)}</select>
+              </label>
+              <label className="block text-sm text-gray-700">Read from
+                <select className={inputClass} value={newLine.read_from} onChange={(e) => setNewLine({ ...newLine, read_from: e.target.value })}><option>Contract</option><option>Purchase order</option><option>Unsigned draft</option></select>
+              </label>
+              <label className="block text-sm text-gray-700">Amount as written<input className={inputClass} value={newLine.amount_text} onChange={(e) => setNewLine({ ...newLine, amount_text: e.target.value })} placeholder="e.g. 2,50,000 per month for 100 hours" required /></label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block text-sm text-gray-700">Unit<input className={inputClass} value={newLine.unit} onChange={(e) => setNewLine({ ...newLine, unit: e.target.value })} placeholder="per month" /></label>
+                <label className="block text-sm text-gray-700">Currency<input className={inputClass} value={newLine.currency} onChange={(e) => setNewLine({ ...newLine, currency: e.target.value.toUpperCase() })} /></label>
+              </div>
+              <label className="block text-sm text-gray-700">Start<input type="date" className={inputClass} value={newLine.start_date} onChange={(e) => setNewLine({ ...newLine, start_date: e.target.value })} /></label>
+              <label className="block text-sm text-gray-700">End<input type="date" className={inputClass} value={newLine.end_date} onChange={(e) => setNewLine({ ...newLine, end_date: e.target.value })} /></label>
+              <label className="block text-sm text-gray-700 md:col-span-2">Clause, as written (and where: page or clause number)
+                <textarea className={inputClass} rows={3} value={newLine.quote} onChange={(e) => setNewLine({ ...newLine, quote: e.target.value })} placeholder="Paste the sentence from the document, e.g. “The Client shall pay a monthly retainer of INR 2,50,000…” (Annexure 1, cl. 3, p. 8)" />
+              </label>
+            </div>
+
+            <div className="flex gap-2 pt-2 border-t border-gray-200">
+              <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50">Add term</button>
+              <button type="button" onClick={() => setNewLine(null)} className="px-4 py-2 border border-gray-300 rounded-md text-sm">Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
