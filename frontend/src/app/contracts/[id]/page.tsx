@@ -156,6 +156,21 @@ export default function ContractDetailPage() {
   };
   const documents = Array.isArray(contract.documents) ? contract.documents : [];
 
+  // Terms grouped by the document they were read from. A term names its source
+  // document in free text; the match is on the document's file name.
+  const docFor = (l: Line) => {
+    const src = (l.source_document ?? "").toLowerCase();
+    if (!src) return null;
+    return documents.find((d) => d.name && src.includes(d.name.toLowerCase())) ?? documents.find((d) => d.name && d.name.toLowerCase().includes(src.split(" (")[0].slice(0, 40))) ?? null;
+  };
+  const groups: { key: string; doc: ContractDocument | null; title: string; lines: Line[] }[] = [];
+  for (const l of contract.lines) {
+    const d = docFor(l);
+    const key = d ? `doc:${d.name}` : l.source_document ? `src:${l.source_document.split(" (")[0]}` : "none";
+    let g = groups.find((x) => x.key === key);
+    if (!g) { g = { key, doc: d, title: d ? d.name : l.source_document ? l.source_document.split(" (")[0] : "Source document not recorded", lines: [] }; groups.push(g); }
+    g.lines.push(l);
+  }
   const questions = contract.open_questions || [];
   const pointers = contract.review_pointers || [];
   const openPointers = pointers.filter((p) => !p.resolved && p.kind !== "uninvoiced");
@@ -255,7 +270,7 @@ export default function ContractDetailPage() {
       <section className="bg-white rounded-lg shadow">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Terms read from the agreement ({contract.lines.length})</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Terms read from the documents ({contract.lines.length} term{contract.lines.length === 1 ? "" : "s"} from {groups.filter((g) => g.key !== "none").length || "no"} document{groups.filter((g) => g.key !== "none").length === 1 ? "" : "s"})</h2>
             <p className="text-xs text-gray-500 mt-1">What the documents say, with the clause each term comes from. Use these to check the billing rules above.</p>
           </div>
           {!newLine && <button onClick={() => setNewLine({ ...emptyLine })} className="text-sm font-medium text-blue-700 hover:underline">Add term</button>}
@@ -270,7 +285,18 @@ export default function ContractDetailPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {contract.lines.map((l) =>
+              {groups.map((g) => [
+                <tr key={g.key} className="bg-gray-50">
+                  <td colSpan={7} className="px-4 py-2 text-sm">
+                    <span className="font-medium text-gray-900">
+                      {g.doc?.uri && /^https?:/.test(g.doc.uri) ? <a href={g.doc.uri} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{g.title}</a> : g.title}
+                    </span>
+                    {g.doc && (g.doc.type || g.doc.date || g.doc.signed != null) && <span className="ml-2 text-xs text-gray-500">{[g.doc.type, g.doc.date, g.doc.signed === true ? "signed" : g.doc.signed === false ? "unsigned" : null].filter(Boolean).join(", ")}</span>}
+                    <span className="ml-2 text-xs text-gray-500">· {g.lines.length} term{g.lines.length === 1 ? "" : "s"}</span>
+                    {g.doc && !(g.doc.uri && /^https?:/.test(g.doc.uri)) && <span className="ml-2 text-xs text-amber-700">no web link yet</span>}
+                  </td>
+                </tr>,
+                ...g.lines.map((l) =>
                 editingLine === l.id ? (
                   <tr key={l.id} className="bg-blue-50">
                     <td className="px-4 py-3"><input className={inputClass} value={lineDraft.service} onChange={(e) => setLineDraft({ ...lineDraft, service: e.target.value })} /></td>
@@ -301,7 +327,7 @@ export default function ContractDetailPage() {
                         <details className="mt-1">
                           <summary className="cursor-pointer text-xs text-blue-700">Clause and document</summary>
                           <div className="mt-1 border-l-2 border-gray-200 pl-3 text-xs text-gray-600 space-y-1">
-                            {l.source_document && <div>{l.source_document}</div>}
+                            {l.source_document && <div>{(() => { const d = docFor(l); return d?.uri && /^https?:/.test(d.uri) ? <><a href={d.uri} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{d.name}</a>{l.source_document.replace(d.name, "")}</> : l.source_document; })()}</div>}
                             {l.quote && <div className="text-gray-900">“{l.quote}”</div>}
                             {l.extra_rule && <div>Extra rule: {l.extra_rule}</div>}
                           </div>
@@ -327,7 +353,8 @@ export default function ContractDetailPage() {
                     </td>
                   </tr>
                 )
-              )}
+                ),
+              ])}
               {contract.lines.length === 0 && !newLine && (
                 <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">No terms recorded. The agreement for this counterparty has not been read yet.</td></tr>
               )}
