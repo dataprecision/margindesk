@@ -16,6 +16,8 @@ interface NavItem {
   href: string;
   label: string;
   roles: Role[];
+  /** Shown only to these sign-ins, on top of the role. */
+  emails?: string[];
   /** Badge shown after the label, from /api/contracts/nav-counts. */
   badge?: "pointers" | "overdue" | "po_alerts";
 }
@@ -93,6 +95,7 @@ const SETUP: NavItem[] = [
   { href: "/settings/import-salary", label: "Import Salary", roles: ADMIN },
   { href: "/sync", label: "Sync", roles: ADMIN },
   { href: "/settings/api-keys", label: "API Keys", roles: ADMIN },
+  { href: "/settings/sharepoint", label: "SharePoint access", roles: ["owner"], emails: ["ketavsharma@dwao.in"] },
   { href: "/settings", label: "Settings", roles: ADMIN },
 ];
 
@@ -126,7 +129,8 @@ export default function Sidebar() {
   const [counts, setCounts] = useState<{ pointers: number; overdue: number; po_alerts: number } | null>(null);
 
   const role = (session?.user?.role ?? "readonly") as Role;
-  const allowed = (item: NavItem) => item.roles.includes(role);
+  const email = (session?.user?.email ?? "").toLowerCase();
+  const allowed = (item: NavItem) => item.roles.includes(role) && (!item.emails || item.emails.includes(email));
   const groups = GROUPS.map((g) => ({ ...g, items: g.items.filter(allowed) })).filter((g) => g.items.length > 0);
   const setup = SETUP.filter(allowed);
   const seesBilling = GROUPS[0].items.some(allowed);

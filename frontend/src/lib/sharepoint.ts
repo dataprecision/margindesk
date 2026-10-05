@@ -29,8 +29,8 @@ async function appToken(): Promise<string> {
   return cached.token;
 }
 
-async function graph(path: string) {
-  const token = await appToken();
+async function graph(path: string, token?: string) {
+  token = token ?? (await appToken());
   const res = await fetch(`https://graph.microsoft.com/v1.0/${path}`, { headers: { Authorization: `Bearer ${token}` } });
   if (res.status === 403 || res.status === 401) throw new SharePointAccessError();
   if (!res.ok) throw new Error(`Graph ${path}: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
@@ -70,9 +70,37 @@ export async function listFolder(folder: SpFolder, depth = 1): Promise<SpFile[]>
 }
 
 /** Turn a pasted SharePoint folder or file link into the drive id and path MarginDesk stores. */
-export async function resolveLink(webUrl: string): Promise<{ drive_id: string; path: string; name: string; is_folder: boolean; web_url: string }> {
+export async function resolveLink(webUrl: string, token?: string): Promise<{ drive_id: string; item_id: string; path: string; name: string; is_folder: boolean; web_url: string }> {
   const encoded = "u!" + Buffer.from(webUrl).toString("base64").replace(/=+$/, "").replace(/\//g, "_").replace(/\+/g, "-");
-  const it = await graph(`shares/${encoded}/driveItem?$select=id,name,webUrl,folder,parentReference`);
+  const it = await graph(`shares/${encoded}/driveItem?$select=id,name,webUrl,folder,parentReference`, token);
   const parentPath = String(it.parentReference?.path ?? "").replace(/^\/drives\/[^/]+\/root:?/, "");
-  return { drive_id: it.parentReference?.driveId, path: `${parentPath}/${it.name}`.replace(/^\/+/, ""), name: it.name, is_folder: !!it.folder, web_url: it.webUrl };
+  return { drive_id: it.parentReference?.driveId, item_id: it.id, path: `${parentPath}/${it.name}`.replace(/^\/+/, ""), name: it.name, is_folder: !!it.folder, web_url: it.webUrl };
+}
+
+/** Can the app (its own identity) read this folder? */
+export async function canRead(driveId: string, itemId: string): Promise<boolean> {
+  try { await graph(`drives/${driveId}/items/${itemId}?$select=id`); return true; } catch { return false; }
+}
+
+// The folders the contract register relies on, offered by default on the Settings page.
+export const DEFAULT_FOLDERS = [
+  { label: "Accounts · Agreements", web_url: "https://dwao.sharepoint.com/sites/Accounts/Shared Documents/Agreements", drive_id: "b!EiqS9u0PnkGt_QlRxWSYXbG0_hFTBItFluAwK9BpmaUwj8ni4Wh-QZ3weybkVnPJ", item_id: "01TBPA225MOGTYMJ3J5NELKNSW6OPPSIJI" },
+  { label: "Accounts · Workflow / PO Received", web_url: "https://dwao.sharepoint.com/sites/Accounts/Shared Documents/Workflow/PO Received", drive_id: "b!EiqS9u0PnkGt_QlRxWSYXbG0_hFTBItFluAwK9BpmaUwj8ni4Wh-QZ3weybkVnPJ", item_id: "01TBPA22YN7PL5UUS6VBFY7Y3LSTTMOXXE" },
+];
+
+/**
+ * Grant the app read on one folder, acting as the signed-in admin (delegated
+ * token used once, never stored). This is the Graph call an admin would
+ * otherwise run by hand in Graph Explorer.
+ */
+export async function grantAppRead(userToken: string, driveId: string, itemId: string): Promise<{ ok: boolean; error?: string }> {
+  const appId = process.env.AZURE_AD_CLIENT_ID!;
+  const res = await fetch(`https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/permissions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${userToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ roles: ["read"], grantedToIdentities: [{ application: { id: appId, displayName: "MarginDesk" } }] }),
+  });
+  if (res.ok) return { ok: true };
+  const text = (await res.text()).slice(0, 300);
+  return { ok: false, error: `HTTP ${res.status}: ${text}` };
 }
