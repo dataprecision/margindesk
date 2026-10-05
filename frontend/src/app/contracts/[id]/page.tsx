@@ -483,7 +483,7 @@ export default function ContractDetailPage() {
       <PurchaseOrders contractId={id} purchaseOrders={contract.purchase_orders} onChange={load} />
 
       {docEdit && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-gray-900/40 p-4 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) setDocEdit(null); }}>
+        <div className="fixed inset-0 z-50 !mt-0 flex items-start justify-center bg-gray-900/40 p-4 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) setDocEdit(null); }}>
           <form className="w-full max-w-xl rounded-lg bg-white shadow-xl p-6 space-y-3 mt-8" onSubmit={(e) => { e.preventDefault(); saveDoc(); }}>
             <div className="flex items-start justify-between gap-3">
               <h2 className="text-lg font-semibold text-gray-900">Edit document</h2>
@@ -520,7 +520,7 @@ export default function ContractDetailPage() {
       )}
 
       {newLine && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-gray-900/40 p-4 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) setNewLine(null); }}>
+        <div className="fixed inset-0 z-50 !mt-0 flex items-start justify-center bg-gray-900/40 p-4 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) setNewLine(null); }}>
           <form
             className="w-full max-w-2xl rounded-lg bg-white shadow-xl p-6 space-y-4 mt-8"
             onSubmit={async (e) => { e.preventDefault(); const ok = newLine.id ? await call(`/api/contracts/lines/${newLine.id}`, "PATCH", newLine) : await call(`/api/contracts/${id}/lines`, "POST", newLine); if (ok) { setNewLine(null); setPickingForTerm(false); } }}
