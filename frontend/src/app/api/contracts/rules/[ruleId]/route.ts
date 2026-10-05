@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withRole } from "@/lib/auth/protect-route";
-import { CONTRACT_API_ROLES, audit, parseDate } from "@/lib/contracts/api";
+import { BILLING_API_ROLES, audit, parseDate } from "@/lib/contracts/api";
 import { PERIODS, SHAPE_BY_KEY, missingParams } from "@/lib/billing/shapes";
 
 /**
@@ -9,7 +9,7 @@ import { PERIODS, SHAPE_BY_KEY, missingParams } from "@/lib/billing/shapes";
  * Edit a rule, confirm it, or retire it. A rule can only be confirmed when
  * its shape is set and every required parameter is filled in.
  */
-export const PATCH = withRole(CONTRACT_API_ROLES, async (req: Request, { user, params }) => {
+export const PATCH = withRole(BILLING_API_ROLES, async (req: Request, { user, params }) => {
   try {
     const { ruleId } = await params;
     const body = await (req as NextRequest).json();
@@ -68,7 +68,7 @@ export const PATCH = withRole(CONTRACT_API_ROLES, async (req: Request, { user, p
 /**
  * DELETE /api/contracts/rules/[ruleId]
  */
-export const DELETE = withRole(CONTRACT_API_ROLES, async (_req: Request, { user, params }) => {
+export const DELETE = withRole(BILLING_API_ROLES, async (_req: Request, { user, params }) => {
   try {
     const { ruleId } = await params;
     const before = await prisma.billingRule.findUnique({ where: { id: ruleId } });

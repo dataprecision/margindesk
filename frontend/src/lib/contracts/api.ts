@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import type { UserRole } from "@prisma/client";
 
-export const CONTRACT_API_ROLES: UserRole[] = ["owner", "finance", "legal"];
+export const CONTRACT_API_ROLES: UserRole[] = ["owner", "finance", "legal", "billing"];
+/** Billing rules, drafts and purchase-order consumption: not the contracting team. */
+export const BILLING_API_ROLES: UserRole[] = ["owner", "finance", "billing", "pm"];
 
 /** "" / undefined -> null, otherwise a Date; throws on an unparseable value. */
 export function parseDate(value: unknown): Date | null {

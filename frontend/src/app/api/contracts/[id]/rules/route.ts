@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withRole } from "@/lib/auth/protect-route";
-import { CONTRACT_API_ROLES, audit, parseDate } from "@/lib/contracts/api";
+import { BILLING_API_ROLES, audit, parseDate } from "@/lib/contracts/api";
 import { PERIODS, SHAPE_BY_KEY } from "@/lib/billing/shapes";
 
 /**
  * POST /api/contracts/[id]/rules
  * Add a billing rule by hand. It starts as proposed.
  */
-export const POST = withRole(CONTRACT_API_ROLES, async (req: Request, { user, params }) => {
+export const POST = withRole(BILLING_API_ROLES, async (req: Request, { user, params }) => {
   try {
     const { id } = await params;
     const body = await (req as NextRequest).json();

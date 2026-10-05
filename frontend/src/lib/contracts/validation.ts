@@ -20,7 +20,7 @@ export interface ValidationInput {
 }
 
 export type Team = "paper" | "commercial" | "billing";
-export const TEAM_LABEL: Record<Team, string> = { paper: "Contracting (legal)", commercial: "Commercial (lead)", billing: "Billing (finance)" };
+export const TEAM_LABEL: Record<Team, string> = { paper: "Contracting (legal)", commercial: "Billing rules (invoicing)", billing: "Zoho and tax (invoicing)" };
 
 export interface TeamCheck { team: Team; done: boolean; checked_at: Date | string | null; missing: string[]; items: { text: string; ok: boolean }[] }
 

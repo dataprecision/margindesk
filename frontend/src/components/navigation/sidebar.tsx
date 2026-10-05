@@ -10,7 +10,7 @@ import { usePathname } from "next/navigation";
 // others. Setup pages sit behind one line at the bottom. Below the lg
 // breakpoint the sidebar shrinks to an icon rail.
 
-type Role = "owner" | "finance" | "pm" | "legal" | "readonly";
+type Role = "owner" | "finance" | "pm" | "legal" | "readonly" | "billing";
 
 interface NavItem {
   href: string;
@@ -30,7 +30,8 @@ interface NavGroup {
 const ALL: Role[] = ["owner", "finance", "pm", "legal", "readonly"];
 const BACK_OFFICE: Role[] = ["owner", "finance", "readonly"];
 const DELIVERY: Role[] = ["owner", "finance", "pm", "readonly"];
-const BILLING: Role[] = ["owner", "finance", "legal"];
+const REGISTER: Role[] = ["owner", "finance", "legal", "billing"]; // contracts, companies, validation, follow-ups
+const BILLING: Role[] = ["owner", "finance", "billing"]; // drafts and purchase orders: not the contracting team
 const ADMIN: Role[] = ["owner", "finance"];
 
 const GROUPS: NavGroup[] = [
@@ -39,12 +40,12 @@ const GROUPS: NavGroup[] = [
     label: "Billing",
     icon: "billing",
     items: [
-      { href: "/companies", label: "Companies", roles: BILLING },
-      { href: "/contracts", label: "Contracts", roles: BILLING, badge: "pointers" },
-      { href: "/contracts/validation", label: "Validation", roles: BILLING },
+      { href: "/companies", label: "Companies", roles: REGISTER },
+      { href: "/contracts", label: "Contracts", roles: REGISTER, badge: "pointers" },
+      { href: "/contracts/validation", label: "Validation", roles: REGISTER },
       { href: "/contracts/estimates", label: "Draft estimates", roles: BILLING },
       { href: "/contracts/purchase-orders", label: "Purchase orders", roles: BILLING, badge: "po_alerts" },
-      { href: "/contracts/tasks", label: "Follow-ups", roles: BILLING, badge: "overdue" },
+      { href: "/contracts/tasks", label: "Follow-ups", roles: REGISTER, badge: "overdue" },
     ],
   },
   {
@@ -129,6 +130,7 @@ export default function Sidebar() {
   const groups = GROUPS.map((g) => ({ ...g, items: g.items.filter(allowed) })).filter((g) => g.items.length > 0);
   const setup = SETUP.filter(allowed);
   const seesBilling = GROUPS[0].items.some(allowed);
+  const dashboardAllowed = !["legal", "billing"].includes(role);
 
   const isCurrent = (href: string) => (href === "/contracts" ? pathname === href || /^\/contracts\/(?!tasks|purchase-orders|estimates|validation)/.test(pathname) : pathname === href || (href !== "/settings" && pathname.startsWith(href + "/")));
   const activeGroup = groups.find((g) => g.items.some((i) => isCurrent(i.href)))?.key ?? (setup.some((i) => isCurrent(i.href)) ? "setup" : null);
@@ -187,17 +189,17 @@ export default function Sidebar() {
   return (
     <aside className="flex h-screen w-16 shrink-0 flex-col border-r border-gray-200 bg-white lg:w-60">
       <div className="border-b border-gray-200 px-4 py-4">
-        <Link href="/dashboard" className="text-xl font-bold text-blue-600">
+        <Link href={dashboardAllowed ? "/dashboard" : "/contracts"} className="text-xl font-bold text-blue-600">
           <span className="lg:hidden">M</span>
           <span className="hidden lg:inline">MarginDesk</span>
         </Link>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 py-3" aria-label="Main">
-        <Link href="/dashboard" title="Dashboard" className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium ${isCurrent("/dashboard") ? "bg-blue-50 text-blue-700" : "text-gray-700 hover:bg-gray-100"}`}>
+        {dashboardAllowed && <Link href="/dashboard" title="Dashboard" className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium ${isCurrent("/dashboard") ? "bg-blue-50 text-blue-700" : "text-gray-700 hover:bg-gray-100"}`}>
           <Icon name="dashboard" />
           <span className="hidden lg:inline">Dashboard</span>
-        </Link>
+        </Link>}
 
         <div className="mt-3 space-y-1">
           {groups.map((g) => {

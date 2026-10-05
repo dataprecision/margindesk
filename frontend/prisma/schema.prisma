@@ -1180,6 +1180,7 @@ enum UserRole {
   pm
   readonly
   legal
+  billing
 }
 
 enum DetailsSyncStatus {
