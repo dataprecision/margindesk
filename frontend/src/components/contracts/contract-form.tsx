@@ -74,7 +74,7 @@ export default function ContractForm({
   const [people, setPeople] = useState<{ id: string; name: string; email: string }[]>([]);
   const [spocText, setSpocText] = useState(initial.spoc);
   const [basisChoice, setBasisChoice] = useState(BASES.includes(initial.basis) ? initial.basis : initial.basis ? OTHER : BASES[0]);
-  const [newLinks, setNewLinks] = useState("");
+  const [newLinks, setNewLinks] = useState<{ name: string; uri: string }[]>([{ name: "", uri: "" }]);
   const set = (patch: Partial<ContractFormValues>) => setV((x) => ({ ...x, ...patch }));
 
   useEffect(() => {
@@ -111,12 +111,8 @@ export default function ContractForm({
     } finally { setAddingCompany(false); }
   };
 
-  // "Name | https://..." or just a URL, one per line.
-  const parseLinks = (text: string): ContractDocument[] =>
-    text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
-      const [a, b] = l.split("|").map((s) => s.trim());
-      return b ? { name: a, uri: b, type: "Link" } : { name: a.replace(/^https?:\/\//, "").slice(0, 80), uri: a, type: "Link" };
-    });
+  const parseLinks = (rows: { name: string; uri: string }[]): ContractDocument[] =>
+    rows.filter((r) => r.uri.trim()).map((r) => ({ name: r.name.trim() || r.uri.replace(/^https?:\/\//, "").split("?")[0].split("/").pop() || "Document", uri: r.uri.trim(), type: "Link" }));
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,9 +209,16 @@ export default function ContractForm({
             ))}
           </ul>
         )}
-        <label className={labelClass}>Add links (one per line, as “Name | link” or just the link)
-          <textarea className={inputClass} rows={2} value={newLinks} onChange={(e) => setNewLinks(e.target.value)} placeholder="MSA signed 2026 | https://dwao.sharepoint.com/..." />
-        </label>
+        <div className="space-y-2">
+          <div className="text-sm text-gray-700">Add SharePoint links (open the file in SharePoint, Copy link, paste)</div>
+          {newLinks.map((r, i) => (
+            <div key={i} className="grid grid-cols-1 md:grid-cols-5 gap-2">
+              <input className={`${inputClass} md:col-span-3`} value={r.uri} onChange={(e) => setNewLinks(newLinks.map((x, j) => (j === i ? { ...x, uri: e.target.value } : x)))} placeholder="https://dwao.sharepoint.com/…" pattern="https://.*" title="A web link starting with https://" />
+              <input className={`${inputClass} md:col-span-2`} value={r.name} onChange={(e) => setNewLinks(newLinks.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} placeholder="Which document" />
+            </div>
+          ))}
+          <button type="button" onClick={() => setNewLinks([...newLinks, { name: "", uri: "" }])} className="text-xs text-blue-700 hover:underline">Add another</button>
+        </div>
       </fieldset>
 
       <div className="flex gap-2 pt-2 border-t border-gray-200">

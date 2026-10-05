@@ -19,14 +19,24 @@ export default function ValidationChecklist({ contractId, checks, documents, sav
   saving: boolean;
   call: (url: string, method: string, body?: unknown) => Promise<boolean>;
 }) {
-  const [links, setLinks] = useState("");
+  const [rows, setRows] = useState<{ name: string; uri: string }[]>([{ name: "", uri: "" }]);
   const [adding, setAdding] = useState(false);
+  const [problem, setProblem] = useState("");
   const allDone = checks.every((c) => c.done);
+  // Files the reading identified but that have no web link yet: offered as names to pick.
+  const unlinked = documents.filter((d) => !(d.uri && /^https?:\/\//i.test(d.uri)));
+  const isHttps = (u: string) => /^https:\/\/[^\s]+$/i.test(u.trim());
 
   const attach = async () => {
-    const add = links.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => { const [a, b] = l.split("|").map((s) => s.trim()); return b ? { name: a, uri: b, type: "Link" } : { name: a.replace(/^https?:\/\//, "").slice(0, 80), uri: a, type: "Link" }; });
-    if (!add.length) return;
-    if (await call(`/api/contracts/${contractId}`, "PATCH", { documents: [...documents, ...add] })) { setLinks(""); setAdding(false); }
+    const filled = rows.filter((r) => r.uri.trim() || r.name.trim());
+    const bad = filled.find((r) => !isHttps(r.uri));
+    if (!filled.length) { setProblem("Paste at least one link."); return; }
+    if (bad) { setProblem(`"${bad.uri || bad.name}" is not a web link. In SharePoint open the file, choose Copy link, and paste that (it starts with https://).`); return; }
+    setProblem("");
+    const add = filled.map((r) => ({ name: r.name.trim() || r.uri.replace(/^https?:\/\//, "").split("?")[0].split("/").pop() || "Document", uri: r.uri.trim(), type: "Link" }));
+    // A picked name replaces the unlinked entry of the same name rather than duplicating it.
+    const kept = documents.filter((d) => !add.some((x) => x.name === d.name && !(d.uri && /^https?:\/\//i.test(d.uri))));
+    if (await call(`/api/contracts/${contractId}`, "PATCH", { documents: [...kept, ...add] })) { setRows([{ name: "", uri: "" }]); setAdding(false); }
   };
 
   return (
@@ -66,15 +76,25 @@ export default function ValidationChecklist({ contractId, checks, documents, sav
               {c.team === "paper" && !c.done && (
                 <div className="mt-3">
                   {adding ? (
-                    <div className="space-y-2">
-                      <textarea className={inputClass} rows={3} value={links} onChange={(e) => setLinks(e.target.value)} placeholder={"MSA signed 2026 | https://dwao.sharepoint.com/...\nPO 4500093633 | https://dwao.sharepoint.com/..."} />
-                      <div className="flex gap-2">
-                        <button disabled={saving} onClick={attach} className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-medium">Attach</button>
-                        <button onClick={() => setAdding(false)} className="px-3 py-1.5 border border-gray-300 rounded-md text-xs">Cancel</button>
+                    <div className="space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3">
+                      <div className="text-xs text-gray-600">In SharePoint open the file, choose <span className="font-medium">Copy link</span>, paste it here and say which document it is.</div>
+                      {unlinked.length > 0 && <div className="text-xs text-gray-500">Files the reading found for this contract: {unlinked.map((d) => d.name).join("; ")}</div>}
+                      {rows.map((r, i) => (
+                        <div key={i} className="grid grid-cols-1 md:grid-cols-5 gap-2">
+                          <input className={`${inputClass} md:col-span-3`} value={r.uri} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, uri: e.target.value } : x)))} placeholder="https://dwao.sharepoint.com/…" />
+                          <input className={`${inputClass} md:col-span-2`} list={`doc-names-${contractId}`} value={r.name} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} placeholder="Which document (pick or type)" />
+                        </div>
+                      ))}
+                      <datalist id={`doc-names-${contractId}`}>{unlinked.map((d, i) => <option key={i} value={d.name} />)}</datalist>
+                      {problem && <div className="text-xs text-red-700">{problem}</div>}
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => setRows([...rows, { name: "", uri: "" }])} className="px-3 py-1.5 border border-gray-300 bg-white rounded-md text-xs">Add another</button>
+                        <button disabled={saving} onClick={attach} className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-medium disabled:opacity-50">Attach</button>
+                        <button onClick={() => { setAdding(false); setProblem(""); }} className="px-3 py-1.5 border border-gray-300 bg-white rounded-md text-xs">Cancel</button>
                       </div>
                     </div>
                   ) : (
-                    <button onClick={() => setAdding(true)} className="text-xs text-blue-700 hover:underline">Attach SharePoint links (one per line, “Name | link”)</button>
+                    <button onClick={() => setAdding(true)} className="px-3 py-1.5 border border-blue-300 bg-blue-50 text-blue-800 rounded-md text-xs font-medium hover:bg-blue-100">Attach SharePoint link</button>
                   )}
                 </div>
               )}
