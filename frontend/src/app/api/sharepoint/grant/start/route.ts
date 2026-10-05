@@ -26,7 +26,7 @@ export const GET = withRole(["owner"], async (req: Request, { user }) => {
     response_type: "code",
     redirect_uri: redirect,
     response_mode: "query",
-    scope: "https://graph.microsoft.com/Files.ReadWrite.All https://graph.microsoft.com/Sites.Read.All openid profile",
+    scope: "https://graph.microsoft.com/Files.ReadWrite.All openid profile",
     state,
     prompt: "select_account",
   }).toString();

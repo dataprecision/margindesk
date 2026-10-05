@@ -66,7 +66,7 @@ export default function SharePointSettingsPage() {
           <ul className="list-disc pl-5 mt-2 space-y-1">
             <li>The app registration <code className="bg-gray-100 px-1 rounded">{data.app_id}</code> has the Application permission <code className="bg-gray-100 px-1 rounded">Files.SelectedOperations.Selected</code> with admin consent (already done).</li>
             <li>The redirect URI <code className="bg-gray-100 px-1 rounded">{data.callback_url}</code> must be listed under the app registration's Authentication → Web redirect URIs. If Microsoft shows an error mentioning the reply URL, add it there and try again.</li>
-            <li>The account you sign in with must be an owner (or SharePoint admin) of the site holding the folders; the grant itself is a Graph call made as that account. Its delegated permissions (Files.ReadWrite.All) are consented on the first run.</li>
+            <li>The account you sign in with must be an owner (or SharePoint admin) of the site holding the folders; the grant itself is a Graph call made as that account. Microsoft describes the one-off permission for that sign-in as "full access to all files you have access to" (Files.ReadWrite.All); it is bounded by your own rights, used for the grant calls only, and not kept. What MarginDesk can read afterwards is only the folders listed above as readable.</li>
           </ul>
         </details>
       </section>

@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     const tokenRes = await fetch(`https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/oauth2/v2.0/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ client_id: process.env.AZURE_AD_CLIENT_ID!, client_secret: process.env.AZURE_AD_CLIENT_SECRET!, grant_type: "authorization_code", code, redirect_uri: `${base}/api/sharepoint/grant/callback`, scope: "https://graph.microsoft.com/Files.ReadWrite.All https://graph.microsoft.com/Sites.Read.All openid profile" }),
+      body: new URLSearchParams({ client_id: process.env.AZURE_AD_CLIENT_ID!, client_secret: process.env.AZURE_AD_CLIENT_SECRET!, grant_type: "authorization_code", code, redirect_uri: `${base}/api/sharepoint/grant/callback`, scope: "https://graph.microsoft.com/Files.ReadWrite.All openid profile" }),
     });
     const tok = await tokenRes.json();
     if (!tok.access_token) return back(`Could not sign in: ${tok.error_description || tok.error || tokenRes.status}`);

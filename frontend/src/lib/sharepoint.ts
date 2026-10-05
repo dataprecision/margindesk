@@ -98,7 +98,7 @@ export async function grantAppRead(userToken: string, driveId: string, itemId: s
   const res = await fetch(`https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/permissions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${userToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ roles: ["read"], grantedToIdentities: [{ application: { id: appId, displayName: "MarginDesk" } }] }),
+    body: JSON.stringify({ roles: ["read"], grantedTo: { application: { id: appId, displayName: "MarginDesk" } } }),
   });
   if (res.ok) return { ok: true };
   const text = (await res.text()).slice(0, 300);
