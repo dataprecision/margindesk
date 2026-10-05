@@ -96,7 +96,7 @@ interface Contract {
   billing_rules: BillingRule[];
 }
 
-const emptyLine = { service: "", billing_type: "Fixed monthly fee", amount_text: "", unit: "per month", currency: "INR", start_date: "", end_date: "", source_document: "", quote: "", read_from: "Contract" };
+const emptyLine = { id: "", service: "", billing_type: "Fixed monthly fee", amount_text: "", unit: "per month", currency: "INR", start_date: "", end_date: "", source_document: "", quote: "", read_from: "Contract" };
 const inputClass = "w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500";
 
 export default function ContractDetailPage() {
@@ -109,8 +109,7 @@ export default function ContractDetailPage() {
   const [saving, setSaving] = useState(false);
   const [editingHeader, setEditingHeader] = useState(false);
   const [header, setHeader] = useState<ContractFormValues | null>(null);
-  const [editingLine, setEditingLine] = useState<string | null>(null);
-  const [lineDraft, setLineDraft] = useState<Record<string, string>>({});
+  const [docEdit, setDocEdit] = useState<{ original: string; name: string; type: string; date: string; signed: string; uri: string } | null>(null);
   const [newLine, setNewLine] = useState<typeof emptyLine | null>(null);
   const [pickingForTerm, setPickingForTerm] = useState(false);
   const [shapeFor, setShapeFor] = useState<Line | null>(null);
@@ -181,13 +180,32 @@ export default function ContractDetailPage() {
     return documents.find((d) => d.name && src.includes(d.name.toLowerCase())) ?? documents.find((d) => d.name && d.name.toLowerCase().includes(src.split(" (")[0].slice(0, 40))) ?? null;
   };
   const groups: { key: string; doc: ContractDocument | null; title: string; lines: Line[] }[] = [];
+  for (const d of documents) if (d?.name && !groups.some((g) => g.key === `doc:${d.name}`)) groups.push({ key: `doc:${d.name}`, doc: d, title: d.name, lines: [] });
   for (const l of contract.lines) {
     const d = docFor(l);
     const key = d ? `doc:${d.name}` : l.source_document ? `src:${l.source_document.split(" (")[0]}` : "none";
     let g = groups.find((x) => x.key === key);
-    if (!g) { g = { key, doc: d, title: d ? d.name : l.source_document ? l.source_document.split(" (")[0] : "Source document not recorded", lines: [] }; groups.push(g); }
+    if (!g) { g = { key, doc: d, title: l.source_document ? l.source_document.split(" (")[0] : "Source document not recorded", lines: [] }; groups.push(g); }
     g.lines.push(l);
   }
+  const docsWithTerms = groups.filter((g) => g.key !== "none" && g.lines.length > 0).length;
+  const editTerm = (l: Line) => setNewLine({ id: l.id, service: l.service, billing_type: l.billing_type, amount_text: l.amount_text, unit: l.unit ?? "", currency: l.currency, start_date: toDateInput(l.start_date), end_date: toDateInput(l.end_date), source_document: docFor(l)?.name ?? l.source_document ?? "", quote: l.quote ?? "", read_from: l.read_from });
+  const saveDoc = async () => {
+    if (!docEdit) return;
+    const next = documents.map((d) => (d.name === docEdit.original ? { ...d, name: docEdit.name.trim() || d.name, type: docEdit.type || null, date: docEdit.date || null, signed: docEdit.signed === "" ? null : docEdit.signed === "true", uri: docEdit.uri.trim() || d.uri } : d));
+    const renamed = docEdit.name.trim() && docEdit.name.trim() !== docEdit.original;
+    if (renamed) {
+      // Terms name their document in free text: keep them pointing at the renamed file.
+      for (const l of contract.lines.filter((x) => docFor(x)?.name === docEdit.original)) {
+        await fetch(`/api/contracts/lines/${l.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_document: (l.source_document ?? "").replace(docEdit.original, docEdit.name.trim()) }) });
+      }
+    }
+    if (await call(`/api/contracts/${id}`, "PATCH", { documents: next })) setDocEdit(null);
+  };
+  const removeDoc = async (name: string, termCount: number) => {
+    if (!window.confirm(termCount ? `Remove "${name}" from this contract? Its ${termCount} term${termCount > 1 ? "s" : ""} are kept and will show under "source not attached".` : `Remove "${name}" from this contract?`)) return;
+    await call(`/api/contracts/${id}`, "PATCH", { documents: documents.filter((d) => d.name !== name) });
+  };
   const questions = contract.open_questions || [];
   const pointers = contract.review_pointers || [];
   const openPointers = pointers.filter((p) => !p.resolved && p.kind !== "uninvoiced");
@@ -294,114 +312,85 @@ export default function ContractDetailPage() {
 
 
       <section className="bg-white rounded-lg shadow">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Terms and how they are billed ({contract.lines.length} term{contract.lines.length === 1 ? "" : "s"} from {groups.filter((g) => g.key !== "none").length || "no"} document{groups.filter((g) => g.key !== "none").length === 1 ? "" : "s"})</h2>
-            <p className="text-xs text-gray-500 mt-1">Left: what the document says, with the clause it comes from (contracting checks this). Right: how the amount is worked out each period (invoicing sets and confirms this). Draft estimates are built from confirmed terms.</p>
+        <div className="flex flex-wrap items-start justify-between gap-3 px-4 sm:px-6 py-4 border-b border-gray-200">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-gray-900">Terms and how they are billed</h2>
+            <p className="text-xs text-gray-500 mt-1">{contract.lines.length} term{contract.lines.length === 1 ? "" : "s"} from {docsWithTerms || "no"} document{docsWithTerms === 1 ? "" : "s"}. Under each document: what it says (contracting checks this) and how the amount is worked out each period (invoicing sets and confirms this).</p>
           </div>
-          {!newLine && <button onClick={() => setNewLine({ ...emptyLine })} className="text-sm font-medium text-blue-700 hover:underline">Add term</button>}
+          <button onClick={() => setNewLine({ ...emptyLine })} className="px-3 py-1.5 border border-gray-300 rounded-md text-sm hover:bg-gray-50 whitespace-nowrap">Add term</button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                {["Service", "As written", "Start", "End", "Status", "How it's billed", ""].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {groups.map((g) => [
-                <tr key={g.key} className="bg-gray-50">
-                  <td colSpan={7} className="px-4 py-2 text-sm">
-                    <span className="font-medium text-gray-900">
-                      {g.doc?.uri && /^https?:/.test(g.doc.uri) ? <a href={g.doc.uri} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{g.title}</a> : g.title}
-                    </span>
-                    {g.doc && (g.doc.type || g.doc.date || g.doc.signed != null) && <span className="ml-2 text-xs text-gray-500">{[g.doc.type, g.doc.date, g.doc.signed === true ? "signed" : g.doc.signed === false ? "unsigned" : null].filter(Boolean).join(", ")}</span>}
-                    <span className="ml-2 text-xs text-gray-500">· {g.lines.length} term{g.lines.length === 1 ? "" : "s"}</span>
-                    {g.doc && !(g.doc.uri && /^https?:/.test(g.doc.uri)) && <span className="ml-2 text-xs text-amber-700">no web link yet</span>}
-                  </td>
-                </tr>,
-                ...g.lines.map((l) =>
-                editingLine === l.id ? (
-                  <tr key={l.id} className="bg-blue-50">
-                    <td className="px-4 py-3"><input className={inputClass} value={lineDraft.service} onChange={(e) => setLineDraft({ ...lineDraft, service: e.target.value })} /></td>
-                    <td className="px-4 py-3">
-                      <select className={inputClass} value={lineDraft.billing_type} onChange={(e) => setLineDraft({ ...lineDraft, billing_type: e.target.value })}>
-                        {BILLING_TYPES.map((t) => <option key={t}>{t}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-4 py-3 space-y-1">
-                      <input className={inputClass} value={lineDraft.amount_text} onChange={(e) => setLineDraft({ ...lineDraft, amount_text: e.target.value })} placeholder="Amount" />
-                      <input className={inputClass} value={lineDraft.unit} onChange={(e) => setLineDraft({ ...lineDraft, unit: e.target.value })} placeholder="per month" />
-                    </td>
-                    <td className="px-4 py-3"><input type="date" className={inputClass} value={lineDraft.start_date} onChange={(e) => setLineDraft({ ...lineDraft, start_date: e.target.value })} /></td>
-                    <td className="px-4 py-3"><input type="date" className={inputClass} value={lineDraft.end_date} onChange={(e) => setLineDraft({ ...lineDraft, end_date: e.target.value })} /></td>
-                    <td className="px-4 py-3" colSpan={2}>
-                      <div className="flex gap-2">
-                        <button disabled={saving} onClick={async () => { if (await call(`/api/contracts/lines/${l.id}`, "PATCH", lineDraft)) setEditingLine(null); }} className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-medium disabled:opacity-50">Save</button>
-                        <button onClick={() => setEditingLine(null)} className="px-3 py-1 border border-gray-300 rounded text-xs">Cancel</button>
+
+        {groups.map((g) => (
+          <div key={g.key} className="border-b border-gray-200 last:border-b-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-gray-50 px-4 sm:px-6 py-3">
+              <div className="min-w-0 flex-1 basis-64">
+                <div className="text-sm font-medium text-gray-900 break-words">
+                  {g.doc?.uri && /^https?:/.test(g.doc.uri) ? <a href={g.doc.uri} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{g.title}</a> : g.title}
+                </div>
+                <div className="text-xs text-gray-500">
+                  {g.doc ? [g.doc.type, g.doc.date, g.doc.signed === true ? "signed" : g.doc.signed === false ? "unsigned" : null].filter(Boolean).join(", ") : g.key === "none" ? "Terms with no source document" : "Named on the terms, not attached to this contract"}
+                  {g.doc || g.key !== "none" ? " · " : " · "}{g.lines.length} term{g.lines.length === 1 ? "" : "s"}
+                  {g.doc && !(g.doc.uri && /^https?:/.test(g.doc.uri)) && <span className="ml-1 text-amber-700">· no web link yet</span>}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => setNewLine({ ...emptyLine, source_document: g.doc?.name ?? (g.key === "none" ? "" : g.title), read_from: /po|purchase/i.test(g.doc?.type ?? "") ? "Purchase order" : "Contract" })} className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-medium hover:bg-blue-700 whitespace-nowrap">Add term</button>
+                {g.doc && <button onClick={() => setDocEdit({ original: g.doc!.name, name: g.doc!.name, type: g.doc!.type ?? "", date: g.doc!.date ?? "", signed: g.doc!.signed == null ? "" : String(g.doc!.signed), uri: g.doc!.uri && /^https?:/.test(g.doc!.uri) ? g.doc!.uri : "" })} className="px-3 py-1.5 border border-gray-300 bg-white rounded-md text-xs font-medium hover:bg-gray-50 whitespace-nowrap">Edit document</button>}
+                {g.doc && <button disabled={saving} onClick={() => removeDoc(g.doc!.name, g.lines.length)} className="px-2 py-1.5 text-xs text-red-600 hover:underline whitespace-nowrap">Remove</button>}
+              </div>
+            </div>
+
+            <ul className="divide-y divide-gray-100">
+              {g.lines.map((l) => (
+                <li key={l.id} className="px-4 sm:px-6 py-4">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-x-6 gap-y-3">
+                    <div className="lg:col-span-6 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 break-words">{l.service}</div>
+                      <div className="mt-1 text-sm text-gray-800 tabular-nums break-words"><span className="text-xs text-gray-500">{l.billing_type}: </span>{l.currency} {l.amount_text}{l.unit ? <span className="text-xs text-gray-500"> {l.unit}</span> : null}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-600 tabular-nums">
+                        <span>{formatDate(l.start_date)} → {formatDate(l.end_date)}</span>
+                        <span className={`px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${STATUS_STYLE[l.status]}`}>{l.status}</span>
+                        {l.read_from !== "Contract" && <span className="text-amber-700 font-medium">Read from: {l.read_from}</span>}
                       </div>
-                    </td>
-                  </tr>
-                ) : (
-                  <tr key={l.id} className="align-top">
-                    <td className="px-4 py-3 max-w-md">
-                      <div className="font-medium text-gray-900">{l.service}</div>
-                      <div className={`text-xs ${l.read_from === "Contract" ? "text-gray-500" : "text-amber-700 font-medium"}`}>Read from: {l.read_from}</div>
-                      {(l.source_document || l.quote || l.extra_rule) && (
+                      {l.date_note && <div className="text-xs text-gray-500 mt-1">{l.date_note}</div>}
+                      {(l.quote || l.extra_rule) && (
                         <details className="mt-1">
-                          <summary className="cursor-pointer text-xs text-blue-700">Clause and document</summary>
+                          <summary className="cursor-pointer text-xs text-blue-700">Clause as written</summary>
                           <div className="mt-1 border-l-2 border-gray-200 pl-3 text-xs text-gray-600 space-y-1">
-                            {l.source_document && <div>{(() => { const d = docFor(l); return d?.uri && /^https?:/.test(d.uri) ? <><a href={d.uri} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{d.name}</a>{l.source_document.replace(d.name, "")}</> : l.source_document; })()}</div>}
+                            {l.source_document && <div>{l.source_document}</div>}
                             {l.quote && <div className="text-gray-900">“{l.quote}”</div>}
-                            {l.extra_rule && <div>Extra rule: {l.extra_rule}</div>}
+                            {l.extra_rule && <div>{l.extra_rule}</div>}
                           </div>
                         </details>
                       )}
-                    </td>
-                    <td className="px-4 py-3 tabular-nums max-w-xs"><div className="text-xs text-gray-500">{l.billing_type}</div>{l.currency} {l.amount_text}{l.unit && <div className="text-xs text-gray-500">{l.unit}</div>}</td>
-                    <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDate(l.start_date)}</td>
-                    <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDate(l.end_date)}{l.date_note && <div className="text-xs text-gray-500 whitespace-normal max-w-[12rem]">{l.date_note}</div>}</td>
-                    <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_STYLE[l.status]}`}>{l.status}</span></td>
-                    <td className="px-4 py-3 max-w-xs">
-                      <div className="flex items-start gap-2">
+                    </div>
+                    <div className="lg:col-span-4 min-w-0">
+                      <div className="flex flex-wrap items-start gap-2">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${RULE_STATUS_STYLE[l.rule_status]}`}>{RULE_STATUS_LABEL[l.rule_status]}</span>
-                        <ShapeSummary term={l} />
+                        <div className="min-w-0 flex-1"><ShapeSummary term={l} /></div>
                       </div>
-                      {!isLegal && l.rule_status !== "retired" && (
-                        <div className="mt-1 text-xs whitespace-nowrap">
-                          <button onClick={() => setShapeFor(l)} className="text-blue-700 hover:underline">{l.shape ? "Edit" : "Set how it's billed"}</button>
-                          {l.shape && l.rule_status !== "confirmed" && <button disabled={saving} onClick={() => call(`/api/contracts/lines/${l.id}`, "PATCH", { rule_status: "confirmed" })} className="ml-3 text-green-700 hover:underline">Confirm</button>}
-                          {l.rule_status === "confirmed" && <button disabled={saving} onClick={() => call(`/api/contracts/lines/${l.id}`, "PATCH", { rule_status: "proposed" })} className="ml-3 text-gray-600 hover:underline">Unconfirm</button>}
-                          <button disabled={saving} onClick={() => call(`/api/contracts/lines/${l.id}`, "PATCH", { rule_status: "retired" })} className="ml-3 text-gray-500 hover:underline">Retire</button>
+                      {l.confirmed_by && l.rule_status === "confirmed" && <div className="text-xs text-gray-500 mt-1">by {l.confirmed_by} on {formatDate(l.confirmed_at)}</div>}
+                      {!isLegal && (
+                        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                          {l.rule_status !== "retired" && <button onClick={() => setShapeFor(l)} className="text-blue-700 hover:underline">{l.shape ? "Edit billing" : "Set how it's billed"}</button>}
+                          {l.shape && l.rule_status === "proposed" && <button disabled={saving} onClick={() => call(`/api/contracts/lines/${l.id}`, "PATCH", { rule_status: "confirmed" })} className="text-green-700 hover:underline">Confirm</button>}
+                          {l.rule_status === "confirmed" && <button disabled={saving} onClick={() => call(`/api/contracts/lines/${l.id}`, "PATCH", { rule_status: "proposed" })} className="text-gray-600 hover:underline">Unconfirm</button>}
+                          {l.rule_status !== "retired" ? <button disabled={saving} onClick={() => call(`/api/contracts/lines/${l.id}`, "PATCH", { rule_status: "retired" })} className="text-gray-500 hover:underline">Retire</button> : <button disabled={saving} onClick={() => call(`/api/contracts/lines/${l.id}`, "PATCH", { rule_status: "proposed" })} className="text-blue-700 hover:underline">Restore</button>}
                         </div>
                       )}
-                      {!isLegal && l.rule_status === "retired" && <button disabled={saving} onClick={() => call(`/api/contracts/lines/${l.id}`, "PATCH", { rule_status: "proposed" })} className="mt-1 text-xs text-blue-700 hover:underline">Restore</button>}
-                      {l.confirmed_by && l.rule_status === "confirmed" && <div className="text-xs text-gray-500 mt-1">by {l.confirmed_by} on {formatDate(l.confirmed_at)}</div>}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-xs">
-                      <button
-                        onClick={() => {
-                          setLineDraft({ service: l.service, billing_type: l.billing_type, amount_text: l.amount_text, unit: l.unit ?? "", start_date: toDateInput(l.start_date), end_date: toDateInput(l.end_date) });
-                          setEditingLine(l.id);
-                        }}
-                        className="text-blue-700 hover:underline mr-3"
-                      >
-                        Edit
-                      </button>
-                      <button onClick={() => { if (window.confirm(`Delete the billing line "${l.service}"?`)) call(`/api/contracts/lines/${l.id}`, "DELETE"); }} className="text-red-600 hover:underline">Delete</button>
-                    </td>
-                  </tr>
-                )
-                ),
-              ])}
-              {contract.lines.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">No terms recorded. The agreement for this counterparty has not been read yet.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                    </div>
+                    <div className="lg:col-span-2 flex lg:justify-end gap-3 text-xs">
+                      <button onClick={() => editTerm(l)} className="text-blue-700 hover:underline">Edit term</button>
+                      <button onClick={() => { if (window.confirm(`Delete the term "${l.service}"?`)) call(`/api/contracts/lines/${l.id}`, "DELETE"); }} className="text-red-600 hover:underline">Delete</button>
+                    </div>
+                  </div>
+                </li>
+              ))}
+              {g.lines.length === 0 && <li className="px-4 sm:px-6 py-3 text-xs text-gray-500">No terms recorded from this document yet.</li>}
+            </ul>
+          </div>
+        ))}
+        {groups.length === 0 && <div className="px-6 py-8 text-center text-sm text-gray-500">No documents or terms yet. Attach the agreement from the checklist above, then add its terms.</div>}
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -493,6 +482,34 @@ export default function ContractDetailPage() {
 
       <PurchaseOrders contractId={id} purchaseOrders={contract.purchase_orders} onChange={load} />
 
+      {docEdit && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-gray-900/40 p-4 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) setDocEdit(null); }}>
+          <form className="w-full max-w-xl rounded-lg bg-white shadow-xl p-6 space-y-3 mt-8" onSubmit={(e) => { e.preventDefault(); saveDoc(); }}>
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="text-lg font-semibold text-gray-900">Edit document</h2>
+              <button type="button" onClick={() => setDocEdit(null)} className="text-sm text-gray-500 hover:text-gray-900">Close</button>
+            </div>
+            <label className="block text-sm text-gray-700">Name<input className={inputClass} value={docEdit.name} onChange={(e) => setDocEdit({ ...docEdit, name: e.target.value })} required /></label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <label className="block text-sm text-gray-700">Type
+                <select className={inputClass} value={docEdit.type} onChange={(e) => setDocEdit({ ...docEdit, type: e.target.value })}>
+                  {["", "MSA", "SOW", "Work order", "Addendum", "Renewal", "PO", "NDA", "Email approval", "Other", ...(["", "MSA", "SOW", "Work order", "Addendum", "Renewal", "PO", "NDA", "Email approval", "Other"].includes(docEdit.type) ? [] : [docEdit.type])].map((t) => <option key={t} value={t}>{t || "Not set"}</option>)}
+                </select>
+              </label>
+              <label className="block text-sm text-gray-700">Dated<input className={inputClass} value={docEdit.date} onChange={(e) => setDocEdit({ ...docEdit, date: e.target.value })} placeholder="YYYY-MM-DD" /></label>
+              <label className="block text-sm text-gray-700">Signed?
+                <select className={inputClass} value={docEdit.signed} onChange={(e) => setDocEdit({ ...docEdit, signed: e.target.value })}><option value="">Not known</option><option value="true">Signed</option><option value="false">Unsigned</option></select>
+              </label>
+            </div>
+            <label className="block text-sm text-gray-700">SharePoint link<input className={inputClass} value={docEdit.uri} onChange={(e) => setDocEdit({ ...docEdit, uri: e.target.value })} placeholder="https://dwao.sharepoint.com/…" pattern="https://.*" title="A web link starting with https://" /></label>
+            <div className="flex gap-2 pt-2 border-t border-gray-200">
+              <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50">Save document</button>
+              <button type="button" onClick={() => setDocEdit(null)} className="px-4 py-2 border border-gray-300 rounded-md text-sm">Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {shapeFor && (
         <TermShapePanel
           term={shapeFor}
@@ -506,11 +523,11 @@ export default function ContractDetailPage() {
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-gray-900/40 p-4 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) setNewLine(null); }}>
           <form
             className="w-full max-w-2xl rounded-lg bg-white shadow-xl p-6 space-y-4 mt-8"
-            onSubmit={async (e) => { e.preventDefault(); if (await call(`/api/contracts/${id}/lines`, "POST", newLine)) { setNewLine(null); setPickingForTerm(false); } }}
+            onSubmit={async (e) => { e.preventDefault(); const ok = newLine.id ? await call(`/api/contracts/lines/${newLine.id}`, "PATCH", newLine) : await call(`/api/contracts/${id}/lines`, "POST", newLine); if (ok) { setNewLine(null); setPickingForTerm(false); } }}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Add a term</h2>
+                <h2 className="text-lg font-semibold text-gray-900">{newLine.id ? "Edit term" : "Add a term"}</h2>
                 <p className="text-xs text-gray-500 mt-1">A term is one thing the paper says about billing: a fee, a rate, an hours bundle, a milestone. Say which document it comes from.</p>
               </div>
               <button type="button" onClick={() => setNewLine(null)} className="text-sm text-gray-500 hover:text-gray-900">Close</button>
@@ -521,6 +538,7 @@ export default function ContractDetailPage() {
                 <select className={inputClass} value={pickingForTerm ? "__pick" : newLine.source_document} onChange={(e) => { if (e.target.value === "__pick") setPickingForTerm(true); else { setPickingForTerm(false); setNewLine({ ...newLine, source_document: e.target.value }); } }}>
                   <option value="">Not recorded</option>
                   {documents.map((d, i) => <option key={i} value={d.name}>{d.name}{d.type ? ` (${d.type})` : ""}</option>)}
+                  {newLine.source_document && !documents.some((d) => d.name === newLine.source_document) && <option value={newLine.source_document}>{newLine.source_document} (not attached)</option>}
                   {contract.client_id && <option value="__pick">Pick a new document from SharePoint…</option>}
                 </select>
               </label>
@@ -562,7 +580,7 @@ export default function ContractDetailPage() {
             </div>
 
             <div className="flex gap-2 pt-2 border-t border-gray-200">
-              <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50">Add term</button>
+              <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{newLine.id ? "Save term" : "Add term"}</button>
               <button type="button" onClick={() => setNewLine(null)} className="px-4 py-2 border border-gray-300 rounded-md text-sm">Cancel</button>
             </div>
           </form>

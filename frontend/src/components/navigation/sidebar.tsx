@@ -127,6 +127,8 @@ export default function Sidebar() {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [loadedPrefs, setLoadedPrefs] = useState(false);
   const [counts, setCounts] = useState<{ pointers: number; overdue: number; po_alerts: number } | null>(null);
+  const [drawer, setDrawer] = useState(false);
+  useEffect(() => { setDrawer(false); }, [pathname]);
 
   const role = (session?.user?.role ?? "readonly") as Role;
   const email = (session?.user?.email ?? "").toLowerCase();
@@ -184,25 +186,33 @@ export default function Sidebar() {
       className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition ${key === activeGroup ? "text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"}`}
     >
       <Icon name={icon} />
-      <span className="hidden lg:inline">{label}</span>
-      {badge ? <span className="ml-auto hidden rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 tabular-nums lg:inline">{badge}</span> : null}
-      <Icon name="chevron" className={`ml-auto hidden h-4 w-4 text-gray-400 transition-transform lg:inline ${isOpen(key) ? "rotate-90" : ""} ${badge ? "!ml-2" : ""}`} />
+      <span className="inline md:hidden lg:inline">{label}</span>
+      {badge ? <span className="ml-auto inline rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 tabular-nums md:hidden lg:inline">{badge}</span> : null}
+      <Icon name="chevron" className={`ml-auto inline h-4 w-4 text-gray-400 transition-transform md:hidden lg:inline ${isOpen(key) ? "rotate-90" : ""} ${badge ? "!ml-2" : ""}`} />
     </button>
   );
 
   return (
-    <aside className="flex h-screen w-16 shrink-0 flex-col border-r border-gray-200 bg-white lg:w-60">
+    <>
+    <div className="fixed inset-x-0 top-0 z-30 flex h-12 items-center gap-3 border-b border-gray-200 bg-white px-3 md:hidden">
+      <button type="button" onClick={() => setDrawer(true)} aria-label="Open menu" className="rounded-md p-2 text-gray-700 hover:bg-gray-100">
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+      </button>
+      <span className="text-lg font-bold text-blue-600">MarginDesk</span>
+    </div>
+    {drawer && <div className="fixed inset-0 z-30 bg-gray-900/40 md:hidden" onClick={() => setDrawer(false)} />}
+    <aside className={`fixed inset-y-0 left-0 z-40 flex h-screen w-72 max-w-[85vw] shrink-0 flex-col border-r border-gray-200 bg-white transition-transform md:static md:z-auto md:w-16 md:max-w-none md:translate-x-0 lg:w-60 ${drawer ? "translate-x-0" : "-translate-x-full"}`}>
       <div className="border-b border-gray-200 px-4 py-4">
         <Link href={dashboardAllowed ? "/dashboard" : "/contracts"} className="text-xl font-bold text-blue-600">
-          <span className="lg:hidden">M</span>
-          <span className="hidden lg:inline">MarginDesk</span>
+          <span className="hidden md:inline lg:hidden">M</span>
+          <span className="inline md:hidden lg:inline">MarginDesk</span>
         </Link>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 py-3" aria-label="Main">
         {dashboardAllowed && <Link href="/dashboard" title="Dashboard" className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium ${isCurrent("/dashboard") ? "bg-blue-50 text-blue-700" : "text-gray-700 hover:bg-gray-100"}`}>
           <Icon name="dashboard" />
-          <span className="hidden lg:inline">Dashboard</span>
+          <span className="inline md:hidden lg:inline">Dashboard</span>
         </Link>}
 
         <div className="mt-3 space-y-1">
@@ -212,7 +222,7 @@ export default function Sidebar() {
               <div key={g.key}>
                 {groupHeader(g.key, g.label, g.icon, groupBadge || undefined)}
                 {loadedPrefs && isOpen(g.key) && (
-                  <div className="mt-0.5 hidden space-y-0.5 pb-1 pl-8 lg:block">
+                  <div className="mt-0.5 block space-y-0.5 pb-1 pl-8 md:hidden lg:block">
                     {g.items.map((item) => (
                       <Link key={item.href} href={item.href} className={linkClass(item.href)}>
                         <span>{item.label}</span>
@@ -222,7 +232,7 @@ export default function Sidebar() {
                   </div>
                 )}
                 {/* Icon rail: the group's pages as a flat list of initials */}
-                <div className="mt-0.5 space-y-0.5 lg:hidden">
+                <div className="mt-0.5 hidden space-y-0.5 md:block lg:hidden">
                   {g.items.map((item) => (
                     <Link key={item.href} href={item.href} title={item.label} className={`block rounded-md px-3 py-1 text-center text-xs ${isCurrent(item.href) ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-500 hover:bg-gray-100"}`}>
                       {item.label.slice(0, 2)}
@@ -238,13 +248,13 @@ export default function Sidebar() {
       <div className="border-t border-gray-200 px-2 py-3">
         <Link href="/help" title="Help" className={`mb-1 flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium ${isCurrent("/help") ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"}`}>
           <Icon name="help" />
-          <span className="hidden lg:inline">Help</span>
+          <span className="inline md:hidden lg:inline">Help</span>
         </Link>
         {setup.length > 0 && (
           <div className="mb-2">
             {groupHeader("setup", "Setup", "setup")}
             {loadedPrefs && isOpen("setup") && (
-              <div className="mt-0.5 hidden space-y-0.5 pl-8 lg:block">
+              <div className="mt-0.5 block space-y-0.5 pl-8 md:hidden lg:block">
                 {setup.map((item) => (
                   <Link key={item.href} href={item.href} className={linkClass(item.href)}>{item.label}</Link>
                 ))}
@@ -253,13 +263,13 @@ export default function Sidebar() {
           </div>
         )}
         <div className="flex items-center gap-2 rounded-md bg-gray-50 px-3 py-2">
-          <div className="hidden min-w-0 flex-1 lg:block">
+          <div className="block min-w-0 flex-1 md:hidden lg:block">
             <div className="truncate text-sm font-medium text-gray-900">{session.user?.name || session.user?.email}</div>
             <div className="text-xs capitalize text-gray-500">{session.user?.role}</div>
           </div>
           <button
             onClick={() => signOut({ callbackUrl: "/auth/signin" })}
-            className="mx-auto p-1 text-gray-400 transition hover:text-red-600 lg:mx-0"
+            className="p-1 text-gray-400 transition hover:text-red-600 md:mx-auto lg:mx-0"
             title="Sign out"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -269,5 +279,6 @@ export default function Sidebar() {
         </div>
       </div>
     </aside>
+    </>
   );
 }

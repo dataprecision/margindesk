@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { withRole } from "@/lib/auth/protect-route";
 import { CONTRACT_API_ROLES, audit, parseAmount, parseDate } from "@/lib/contracts/api";
 
-const TEXT_FIELDS = ["service", "billing_type", "unit", "currency", "read_from", "source_document", "extra_rule", "date_note"] as const;
+const TEXT_FIELDS = ["service", "billing_type", "unit", "currency", "read_from", "source_document", "extra_rule", "date_note", "quote"] as const;
 
 /**
  * PATCH /api/contracts/lines/[lineId]
