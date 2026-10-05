@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { PERIODS, missingParams } from "@/lib/billing/shapes";
 import { prisma } from "@/lib/prisma";
 import { withRole } from "@/lib/auth/protect-route";
 import { CONTRACT_API_ROLES, audit, parseAmount, parseDate } from "@/lib/contracts/api";
@@ -25,6 +26,26 @@ export const PATCH = withRole(CONTRACT_API_ROLES, async (req: Request, { user, p
     if ("end_date" in body) data.end_date = parseDate(body.end_date);
     if ("project_id" in body) data.project_id = body.project_id || null;
     if ("verified" in body) data.verified = !!body.verified;
+    // Billing shape (invoicing): shape, its numbers, period; confirm only when every required number is present.
+    if ("shape" in body) data.shape = body.shape || null;
+    if ("params" in body && typeof body.params === "object") data.params = body.params;
+    if ("period" in body) { if (body.period && !PERIODS.includes(body.period)) return NextResponse.json({ error: "Unknown billing period" }, { status: 400 }); data.period = body.period || null; }
+    if ("fx_rate" in body) data.fx_rate = body.fx_rate === "" || body.fx_rate == null ? null : Number(body.fx_rate);
+    if ("input_needed" in body) data.input_needed = body.input_needed || null;
+    if ("advance_or_arrears" in body) data.advance_or_arrears = body.advance_or_arrears || null;
+    if ("rule_status" in body) {
+      if (!["proposed", "confirmed", "retired"].includes(body.rule_status)) return NextResponse.json({ error: "Unknown status" }, { status: 400 });
+      if (body.rule_status === "confirmed") {
+        const shape = (data.shape ?? before.shape) as string | null;
+        const params = (data.params ?? before.params ?? {}) as Record<string, any>;
+        if (!shape) return NextResponse.json({ error: "Set how the term is billed before confirming it" }, { status: 400 });
+        const gaps = missingParams(shape, params);
+        if (gaps.length) return NextResponse.json({ error: `Still needed: ${gaps.join(", ")}` }, { status: 400 });
+      }
+      data.rule_status = body.rule_status;
+      data.confirmed_by = body.rule_status === "confirmed" ? user.name || user.email : null;
+      data.confirmed_at = body.rule_status === "confirmed" ? new Date() : null;
+    }
 
     const line = await prisma.contractLine.update({ where: { id: lineId }, data });
     await audit(user, "ContractLine", lineId, "update", before, line);

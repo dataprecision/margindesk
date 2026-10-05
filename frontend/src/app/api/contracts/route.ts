@@ -15,10 +15,11 @@ export const GET = withRole(CONTRACT_API_ROLES, async () => {
       include: {
         client: { select: { id: true, name: true, placeholder: true, zoho_contact_id: true, gstin: true, billing_currency: true, payment_terms: true } },
         spoc_person: { select: { id: true, name: true } },
-        lines: { select: { end_date: true, start_date: true } },
+        lines: { select: { end_date: true, start_date: true, shape: true, rule_status: true } },
+        agreement: { select: { id: true, title: true, kind: true, end_date: true, start_date: true } },
         purchase_orders: { select: { valid_to: true, status: true, value: true } },
         tasks: { where: { status: "open" }, select: { id: true, due_date: true } },
-        billing_rules: { where: { status: { not: "retired" } }, select: { status: true, source: true } },
+        billing_rules: { where: { status: { not: "retired" } }, select: { status: true } },
       },
       orderBy: { counterparty: "asc" },
     });
@@ -39,13 +40,14 @@ export const GET = withRole(CONTRACT_API_ROLES, async () => {
           line_count: lines.length,
           next_line_end: upcoming[0] ?? null,
           po_count: purchase_orders.length,
-          rule_count: billing_rules.length,
-          confirmed_rule_count: billing_rules.filter((r) => r.status === "confirmed").length,
+          rule_count: lines.filter((l) => l.shape && l.rule_status !== "retired").length,
+          confirmed_rule_count: lines.filter((l) => l.shape && l.rule_status === "confirmed").length,
+          beyond_agreement: !!(c.agreement?.end_date && c.end_date && c.end_date > c.agreement.end_date) || !!(c.agreement?.end_date && c.agreement.end_date < today && (!c.end_date || c.end_date >= today)),
           open_task_count: tasks.length,
           overdue_task_count: tasks.filter((t) => t.due_date < today).length,
           open_question_count: questions.filter((q) => !q?.resolved).length,
           open_pointer_count: pointers.filter((p) => !p?.resolved && p?.kind !== "uninvoiced").length,
-          validation: validationChecks({ ...c, documents: c.documents, client: c.client, billing_rules, purchase_orders, review_pointers: undefined } as any).map((t) => ({ team: t.team, done: t.done, missing: t.missing })),
+          validation: validationChecks({ ...c, documents: c.documents, client: c.client, lines_with_shape: lines, purchase_orders, review_pointers: undefined } as any).map((t) => ({ team: t.team, done: t.done, missing: t.missing })),
         };
       }),
     });

@@ -16,6 +16,7 @@ export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { user, pa
       include: {
         client: { select: { id: true, name: true, placeholder: true, zoho_contact_id: true, gstin: true, billing_currency: true, payment_terms: true } },
         spoc_person: { select: { id: true, name: true, email: true } },
+        agreement: { select: { id: true, title: true, kind: true, start_date: true, end_date: true, notice_days: true, auto_renewal: true } },
         lines: { orderBy: [{ sort_order: "asc" }, { created_at: "asc" }], include: { project: { select: { id: true, name: true } } } },
         purchase_orders: { orderBy: [{ valid_to: "desc" }, { po_date: "desc" }] },
         tasks: { orderBy: [{ status: "asc" }, { due_date: "asc" }] },
@@ -29,7 +30,7 @@ export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { user, pa
       ...contract,
       status: contractStatus(contract.start_date, contract.end_date, today),
       days_left: daysLeft(contract.end_date, today),
-      validation: validationChecks(contract),
+      validation: validationChecks({ ...contract, lines_with_shape: contract.lines }),
       // The contracting team checks the paper, not how it is billed.
       billing_rules: user.role === "legal" ? [] : contract.billing_rules,
       lines: contract.lines.map((l) => ({
@@ -45,6 +46,7 @@ export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { user, pa
 });
 
 const TEXT_FIELDS = ["counterparty", "basis", "bill_to", "spoc", "stage", "po_status", "notes", "direction"] as const;
+const AGREEMENT_FIELD = "agreement_id";
 const REVIEW_BUCKETS = ["clean", "open", "document_awaited"];
 
 /**
@@ -65,6 +67,13 @@ export const PATCH = withRole(CONTRACT_API_ROLES, async (req: Request, { user, p
     if ("start_date" in body) data.start_date = parseDate(body.start_date);
     if ("end_date" in body) data.end_date = parseDate(body.end_date);
     if ("client_id" in body) data.client_id = body.client_id || null;
+    if (AGREEMENT_FIELD in body) {
+      if (body.agreement_id) {
+        const ag = await prisma.agreement.findUnique({ where: { id: body.agreement_id }, select: { client_id: true } });
+        if (!ag) return NextResponse.json({ error: "Agreement not found" }, { status: 404 });
+      }
+      data.agreement_id = body.agreement_id || null;
+    }
     if ("spoc_person_id" in body) {
       if (body.spoc_person_id) {
         const person = await prisma.person.findUnique({ where: { id: body.spoc_person_id }, select: { id: true, name: true } });
@@ -93,8 +102,8 @@ export const PATCH = withRole(CONTRACT_API_ROLES, async (req: Request, { user, p
       const roleOk = team === "paper" ? ["owner", "legal"].includes(user.role) : ["owner", "finance", "billing", "pm"].includes(user.role);
       if (!roleOk) return NextResponse.json({ error: `Your role cannot sign off ${team}` }, { status: 403 });
       if (body.done) {
-        const full = await prisma.contract.findUnique({ where: { id }, include: { client: { select: { placeholder: true, zoho_contact_id: true, gstin: true, billing_currency: true, payment_terms: true } }, billing_rules: { select: { status: true, source: true } }, purchase_orders: { select: { status: true, value: true, valid_to: true } } } });
-        const blockers = blockersFor(team, full!);
+        const full = await prisma.contract.findUnique({ where: { id }, include: { client: { select: { placeholder: true, zoho_contact_id: true, gstin: true, billing_currency: true, payment_terms: true } }, lines: { select: { shape: true, rule_status: true } }, purchase_orders: { select: { status: true, value: true, valid_to: true } } } });
+        const blockers = blockersFor(team, { ...full!, lines_with_shape: full!.lines });
         if (blockers.length) return NextResponse.json({ error: `Not yet: ${blockers.join("; ")}` }, { status: 400 });
       }
       data[`${team}_checked_by`] = body.done ? user.name || user.email : null;

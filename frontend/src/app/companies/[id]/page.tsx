@@ -10,6 +10,12 @@ interface Contact {
   id: string; name: string; designation: string | null; department: string | null; email: string | null; phone: string | null; mobile: string | null;
   is_primary: boolean; roles: string[]; notes: string | null; source: string; active: boolean;
 }
+interface Agreement {
+  id: string; kind: string; title: string; start_date: string | null; end_date: string | null; auto_renewal: boolean | null; renewal_note: string | null; notice_days: number | null; signed: boolean | null;
+  documents: { name: string; uri?: string | null; type?: string | null }[]; notes: string | null; paper_checked_by: string | null; paper_checked_at: string | null; status: ContractStatus;
+  contracts: { id: string; counterparty: string; basis: string; start_date: string | null; end_date: string | null; review_bucket: ReviewBucket | null; beyond_agreement: boolean }[];
+}
+
 interface Company {
   id: string; name: string; contact_type: string | null; placeholder: boolean; zoho_contact_id: string | null; zoho_status: string | null;
   sharepoint_folders: { label: string; drive_id: string; path: string; web_url?: string | null }[];
@@ -37,6 +43,10 @@ export default function CompanyPage() {
   const [saving, setSaving] = useState(false);
   const [newContact, setNewContact] = useState<typeof emptyContact | null>(null);
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
+  const [agreements, setAgreements] = useState<Agreement[]>([]);
+  const [agDraft, setAgDraft] = useState<{ id?: string; kind: string; title: string; start_date: string; end_date: string; auto_renewal: string; notice_days: string; signed: string; renewal_note: string; notes: string } | null>(null);
+  const loadAgreements = useCallback(() => fetch(`/api/companies/${id}/agreements`).then((r) => r.json()).then((d) => setAgreements(d.agreements || [])).catch(() => {}), [id]);
+  useEffect(() => { loadAgreements(); }, [loadAgreements]);
   const [folderLink, setFolderLink] = useState("");
   const [folderLabel, setFolderLabel] = useState("");
   const [sp, setSp] = useState<{ connected: boolean; message?: string } | null>(null);
@@ -61,6 +71,7 @@ export default function CompanyPage() {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Save failed");
       await load();
+      await loadAgreements();
       return d;
     } catch (e: any) { setError(e.message); return null; } finally { setSaving(false); }
   };
@@ -124,6 +135,65 @@ export default function CompanyPage() {
           {fact("Phone", company.primary_phone)}
           {fact("Website", company.website)}
         </dl>
+      </section>
+
+      <section className="bg-white rounded-lg shadow">
+        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Agreements ({agreements.length})</h2>
+            <p className="text-xs text-gray-500 mt-1">The organisation-level paper: MSA, NDA, framework. Their dates govern every contract (SOW) beneath them; a contract that runs beyond its MSA is flagged.</p>
+          </div>
+          {!agDraft && <button onClick={() => setAgDraft({ kind: "MSA", title: "", start_date: "", end_date: "", auto_renewal: "", notice_days: "", signed: "", renewal_note: "", notes: "" })} className="px-3 py-1.5 border border-gray-300 rounded-md text-sm hover:bg-gray-50">Add agreement</button>}
+        </div>
+        {agDraft && (
+          <form className="px-6 py-4 border-b border-gray-200 bg-gray-50 grid grid-cols-2 md:grid-cols-4 gap-3" onSubmit={async (e) => { e.preventDefault(); const ok = agDraft.id ? await call(`/api/agreements/${agDraft.id}`, "PATCH", agDraft) : await call(`/api/companies/${id}/agreements`, "POST", agDraft); if (ok) setAgDraft(null); }}>
+            <label className="text-xs text-gray-600">Kind<select className={inputClass} value={agDraft.kind} onChange={(e) => setAgDraft({ ...agDraft, kind: e.target.value })}>{["MSA", "NDA", "Framework", "Other"].map((k) => <option key={k}>{k}</option>)}</select></label>
+            <label className="text-xs text-gray-600 col-span-2 md:col-span-3">Title<input className={inputClass} value={agDraft.title} onChange={(e) => setAgDraft({ ...agDraft, title: e.target.value })} placeholder="e.g. Master Services Agreement 2026" required /></label>
+            <label className="text-xs text-gray-600">Start<input type="date" className={inputClass} value={agDraft.start_date} onChange={(e) => setAgDraft({ ...agDraft, start_date: e.target.value })} /></label>
+            <label className="text-xs text-gray-600">End<input type="date" className={inputClass} value={agDraft.end_date} onChange={(e) => setAgDraft({ ...agDraft, end_date: e.target.value })} /></label>
+            <label className="text-xs text-gray-600">Notice period (days)<input className={inputClass} inputMode="numeric" value={agDraft.notice_days} onChange={(e) => setAgDraft({ ...agDraft, notice_days: e.target.value })} /></label>
+            <label className="text-xs text-gray-600">Auto-renews?<select className={inputClass} value={agDraft.auto_renewal} onChange={(e) => setAgDraft({ ...agDraft, auto_renewal: e.target.value })}><option value="">Not stated</option><option value="true">Yes</option><option value="false">No</option></select></label>
+            <label className="text-xs text-gray-600">Signed?<select className={inputClass} value={agDraft.signed} onChange={(e) => setAgDraft({ ...agDraft, signed: e.target.value })}><option value="">Not known</option><option value="true">Yes</option><option value="false">No</option></select></label>
+            <label className="text-xs text-gray-600 col-span-2 md:col-span-3">Renewal wording<input className={inputClass} value={agDraft.renewal_note} onChange={(e) => setAgDraft({ ...agDraft, renewal_note: e.target.value })} placeholder="e.g. renews for 12 months unless 30 days' notice" /></label>
+            <label className="text-xs text-gray-600 col-span-2 md:col-span-4">Notes<input className={inputClass} value={agDraft.notes} onChange={(e) => setAgDraft({ ...agDraft, notes: e.target.value })} /></label>
+            <div className="col-span-2 md:col-span-4 flex gap-2">
+              <button type="submit" disabled={saving} className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-sm">{agDraft.id ? "Save" : "Add agreement"}</button>
+              <button type="button" onClick={() => setAgDraft(null)} className="px-3 py-1.5 border border-gray-300 rounded-md text-sm">Cancel</button>
+            </div>
+          </form>
+        )}
+        <ul className="divide-y divide-gray-200">
+          {agreements.map((a) => (
+            <li key={a.id} className="px-6 py-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-gray-900"><span className="px-1.5 py-0.5 rounded bg-gray-100 text-xs mr-2">{a.kind}</span>{a.title}</div>
+                  <div className="text-xs text-gray-600 mt-1 tabular-nums">{formatDate(a.start_date)} → {formatDate(a.end_date)} <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLE[a.status]}`}>{a.status}</span>{a.notice_days ? ` · ${a.notice_days} days' notice` : ""}{a.auto_renewal === true ? " · auto-renews" : a.auto_renewal === false ? " · no auto-renewal" : ""}{a.signed === true ? " · signed" : a.signed === false ? " · unsigned" : ""}</div>
+                  {a.documents?.length > 0 && <div className="text-xs text-gray-500 mt-1">{a.documents.map((d, i) => <span key={i}>{i > 0 ? "; " : ""}{d.uri && /^https?:/.test(d.uri) ? <a href={d.uri} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{d.name}</a> : d.name}</span>)}</div>}
+                  {a.notes && <div className="text-xs text-gray-500 mt-1">{a.notes}</div>}
+                  {a.paper_checked_by && <div className="text-xs text-green-700 mt-1">Paper checked by {a.paper_checked_by} on {formatDate(a.paper_checked_at)}</div>}
+                </div>
+                <div className="text-xs whitespace-nowrap">
+                  <button onClick={() => setAgDraft({ id: a.id, kind: a.kind, title: a.title, start_date: a.start_date?.slice(0, 10) ?? "", end_date: a.end_date?.slice(0, 10) ?? "", auto_renewal: a.auto_renewal == null ? "" : String(a.auto_renewal), notice_days: a.notice_days == null ? "" : String(a.notice_days), signed: a.signed == null ? "" : String(a.signed), renewal_note: a.renewal_note ?? "", notes: a.notes ?? "" })} className="text-blue-700 hover:underline">Edit</button>
+                  {!a.paper_checked_by ? <button disabled={saving} onClick={() => call(`/api/agreements/${a.id}`, "PATCH", { paper_checked: true })} className="ml-3 text-green-700 hover:underline">Paper checked</button> : <button disabled={saving} onClick={() => call(`/api/agreements/${a.id}`, "PATCH", { paper_checked: false })} className="ml-3 text-gray-600 hover:underline">Undo check</button>}
+                  <button disabled={saving} onClick={() => { if (window.confirm(`Remove ${a.kind} "${a.title}"? Contracts under it are kept.`)) call(`/api/agreements/${a.id}`, "DELETE"); }} className="ml-3 text-red-600 hover:underline">Remove</button>
+                </div>
+              </div>
+              {a.contracts.length > 0 && (
+                <ul className="mt-2 ml-4 border-l-2 border-gray-200 pl-3 space-y-1">
+                  {a.contracts.map((c) => (
+                    <li key={c.id} className="text-sm flex flex-wrap items-center gap-2">
+                      <Link href={`/contracts/${c.id}`} className="text-blue-700 hover:underline">{c.counterparty}</Link>
+                      <span className="text-xs text-gray-500 tabular-nums">{formatDate(c.start_date)} → {formatDate(c.end_date)}</span>
+                      {c.beyond_agreement && <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">runs beyond the {a.kind}</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+          {agreements.length === 0 && <li className="px-6 py-6 text-center text-sm text-gray-500">No MSA or NDA recorded for this company yet.</li>}
+        </ul>
       </section>
 
       <section className="bg-white rounded-lg shadow p-6">

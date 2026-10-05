@@ -18,6 +18,7 @@ export interface ContractDocument {
 export interface ContractFormValues {
   counterparty: string;
   client_id: string;
+  agreement_id: string;
   bill_to: string;
   direction: string;
   spoc: string;
@@ -49,7 +50,7 @@ const DIRECTIONS = [
 const OTHER = "__other";
 
 export const emptyContract: ContractFormValues = {
-  counterparty: "", client_id: "", bill_to: "", direction: "customer", spoc: "", spoc_person_id: "", basis: "Signed agreement", stage: "active",
+  counterparty: "", client_id: "", agreement_id: "", bill_to: "", direction: "customer", spoc: "", spoc_person_id: "", basis: "Signed agreement", stage: "active",
   start_date: "", end_date: "", po_status: "", notes: "", documents: [],
 };
 
@@ -87,6 +88,11 @@ export default function ContractForm({
 
   const clientName = useMemo(() => clients.find((c) => c.id === v.client_id)?.name ?? "", [clients, v.client_id]);
   const [clientText, setClientText] = useState("");
+  const [agreements, setAgreements] = useState<{ id: string; kind: string; title: string; end_date: string | null }[]>([]);
+  useEffect(() => {
+    if (!v.client_id) { setAgreements([]); return; }
+    fetch(`/api/companies/${v.client_id}/agreements`).then((r) => r.json()).then((d) => setAgreements((d.agreements || []).map((a: any) => ({ id: a.id, kind: a.kind, title: a.title, end_date: a.end_date })))).catch(() => setAgreements([]));
+  }, [v.client_id]);
   useEffect(() => { if (clientName) setClientText(clientName); }, [clientName]);
 
   const pickClient = (text: string) => {
@@ -137,6 +143,13 @@ export default function ContractForm({
               <>No company with exactly this name. <button type="button" disabled={addingCompany} onClick={addCompany} className="text-blue-700 hover:underline">Add “{clientText}” as a new company</button> (not in Zoho Books yet; finance links it when the record exists).</>
             ) : "Pick the customer or vendor this contract is with."}
           </span>
+        </label>
+        <label className={labelClass}>Governed by (MSA or framework agreement)
+          <select className={inputClass} value={v.agreement_id} onChange={(e) => set({ agreement_id: e.target.value })} disabled={!v.client_id}>
+            <option value="">{v.client_id ? (agreements.length ? "Standalone (PO only / no MSA)" : "No agreement on the company yet") : "Pick the company first"}</option>
+            {agreements.map((a) => <option key={a.id} value={a.id}>{a.kind}: {a.title}{a.end_date ? ` (ends ${a.end_date.slice(0, 10)})` : ""}</option>)}
+          </select>
+          <span className="text-xs text-gray-500">MSAs and NDAs are recorded on the company page; this contract's own dates may differ from the MSA's.</span>
         </label>
         <label className={labelClass}>Invoiced to (legal entity on the invoice)
           <input className={inputClass} value={v.bill_to} onChange={(e) => set({ bill_to: e.target.value })} placeholder="Same as counterparty if blank" />
