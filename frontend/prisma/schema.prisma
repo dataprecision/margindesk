@@ -70,6 +70,16 @@ model Agreement {
   notes            String?
   paper_checked_by String?
   paper_checked_at DateTime?
+  // Maker-checker approval: draft | submitted | approved | sent_back. Any edit resets it to draft.
+  approval_status  String    @default("draft")
+  last_edited_by   String?   // email of the last person who changed it (the maker)
+  last_edited_at   DateTime?
+  submitted_by     String?
+  submitted_at     DateTime?
+  approved_by      String?   // email of the checker; must differ from the maker and the submitter
+  approved_at      DateTime?
+  approval_note    String?   // reason when sent back; evidence note at approval
+  approved_against Json?     // what was approved: documents (with SharePoint modified dates), dates, amounts
   created_at       DateTime  @default(now())
   updated_at       DateTime  @updatedAt
   client           Client    @relation(fields: [client_id], references: [id], onDelete: Cascade)
@@ -77,6 +87,7 @@ model Agreement {
 
   @@index([client_id])
   @@index([end_date])
+  @@index([approval_status])
 }
 
 // A person on the other side: who to write to for business, legal or billing
@@ -1262,6 +1273,16 @@ model Contract {
   commercial_checked_at DateTime?
   billing_checked_by    String? // finance: company in Zoho, tax, currency, terms, PO
   billing_checked_at    DateTime?
+  // Maker-checker approval: draft | submitted | approved | sent_back. Any edit resets it to draft.
+  approval_status  String    @default("draft")
+  last_edited_by   String?   // email of the last person who changed it (the maker)
+  last_edited_at   DateTime?
+  submitted_by     String?
+  submitted_at     DateTime?
+  approved_by      String?   // email of the checker; must differ from the maker and the submitter
+  approved_at      DateTime?
+  approval_note    String?   // reason when sent back; evidence note at approval
+  approved_against Json?     // what was approved: documents (with SharePoint modified dates), dates, amounts
   review_bucket   String? // clean | open | document_awaited, set when the contract reads were loaded
   review_pointers Json                    @default("[]") // [{ kind, text, big, resolved }] - what a person must settle before billing
   read_file       String? // contracts_v2 file the entry was loaded from
@@ -1283,6 +1304,7 @@ model Contract {
   @@index([spoc_person_id])
   @@index([agreement_id])
   @@index([review_bucket])
+  @@index([approval_status])
 }
 
 model ContractLine {
@@ -1317,6 +1339,16 @@ model ContractLine {
   rule_evidence   Json? // what past invoices show for this term
   billing_rule_id String? // the rule this shape was folded in from
   replaces_line_id String? // the earlier version this line took over from, on its start date
+  // Maker-checker approval: draft | submitted | approved | sent_back. Any edit resets it to draft.
+  approval_status  String    @default("draft")
+  last_edited_by   String?   // email of the last person who changed it (the maker)
+  last_edited_at   DateTime?
+  submitted_by     String?
+  submitted_at     DateTime?
+  approved_by      String?   // email of the checker; must differ from the maker and the submitter
+  approved_at      DateTime?
+  approval_note    String?   // reason when sent back; evidence note at approval
+  approved_against Json?     // what was approved: documents (with SharePoint modified dates), dates, amounts
   created_at      DateTime  @default(now())
   updated_at      DateTime  @updatedAt
   contract        Contract  @relation(fields: [contract_id], references: [id], onDelete: Cascade)
@@ -1330,6 +1362,7 @@ model ContractLine {
   @@index([project_id])
   @@index([rule_status])
   @@index([replaces_line_id])
+  @@index([approval_status])
 }
 
 // A billing rule is the computable form of a billing term: one shape (see
@@ -1572,6 +1605,7 @@ model DraftEstimateLine {
   shape       String
   params      Json     @default("{}")
   inputs      Json     @default("{}") // the month's numbers, entered by the lead
+  source      Json?    // frozen at preparation: the line version, its approval, document and clause
   quantity    Decimal? @db.Decimal(12, 4)
   rate        Decimal? @db.Decimal(15, 4)
   amount      Decimal  @default(0) @db.Decimal(15, 2)

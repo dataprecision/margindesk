@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withRole } from "@/lib/auth/protect-route";
 import { CONTRACT_API_ROLES, audit, parseDate } from "@/lib/contracts/api";
+import { editResets } from "@/lib/contracts/approval";
 
 const TEXT = ["title", "kind", "renewal_note", "notes"] as const;
 
@@ -26,7 +27,11 @@ export const PATCH = withRole(CONTRACT_API_ROLES, async (req: Request, { user, p
       data.paper_checked_by = body.paper_checked ? user.name || user.email : null;
       data.paper_checked_at = body.paper_checked ? new Date() : null;
     }
+    const substantive = Object.keys(data).some((k) => !k.startsWith("paper_checked"));
+    if (substantive) Object.assign(data, editResets(user));
     const agreement = await prisma.agreement.update({ where: { id }, data });
+    // Contracts approved under this agreement were approved against its old dates and documents.
+    if (substantive) await prisma.contract.updateMany({ where: { agreement_id: id, approval_status: { in: ["approved", "submitted"] } }, data: editResets(user) });
     await audit(user, "Agreement", id, "update", before, agreement);
     return NextResponse.json({ agreement });
   } catch (error: any) {

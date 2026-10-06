@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { missingParams } from "@/lib/billing/shapes";
+import { editResets } from "@/lib/contracts/approval";
 import { prisma } from "@/lib/prisma";
 import { withRole } from "@/lib/auth/protect-route";
 import { CONTRACT_API_ROLES, audit, parseAmount, parseDate } from "@/lib/contracts/api";
@@ -39,12 +39,15 @@ export const POST = withRole(CONTRACT_API_ROLES, async (req: Request, { user, pa
           input_needed: body.input_needed || null,
           advance_or_arrears: body.advance_or_arrears || null,
           fx_rate: body.fx_rate === "" || body.fx_rate == null ? null : Number(body.fx_rate),
-          ...(body.rule_status === "confirmed" && body.shape && missingParams(body.shape, body.params ?? {}).length === 0 ? { rule_status: "confirmed", confirmed_by: user.name || user.email, confirmed_at: new Date() } : {}),
         }),
+        approval_note: body.approval_note || null,
+        last_edited_by: editResets(user).last_edited_by, last_edited_at: new Date(),
         project_id: body.project_id || null,
         sort_order: contract._count.lines,
       },
     });
+    await prisma.contract.update({ where: { id }, data: { commercial_checked_by: null, commercial_checked_at: null } });
+    await prisma.contract.updateMany({ where: { id, approval_status: { in: ["approved", "submitted"] } }, data: editResets(user) });
     await audit(user, "ContractLine", line.id, "create", undefined, line);
     return NextResponse.json({ line }, { status: 201 });
   } catch (error: any) {

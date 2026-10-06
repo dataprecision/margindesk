@@ -4,6 +4,7 @@ import { withRole } from "@/lib/auth/protect-route";
 import { CONTRACT_API_ROLES, audit, parseDate } from "@/lib/contracts/api";
 import { contractStatus, daysLeft } from "@/lib/contracts/status";
 import { blockersFor, validationChecks, type Team } from "@/lib/contracts/validation";
+import { agreementLapse, approvalView, contractLapse, editResets, lineLapse } from "@/lib/contracts/approval";
 
 /**
  * GET /api/contracts/[id]
@@ -16,7 +17,7 @@ export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { user, pa
       include: {
         client: { select: { id: true, name: true, placeholder: true, zoho_contact_id: true, gstin: true, billing_currency: true, payment_terms: true } },
         spoc_person: { select: { id: true, name: true, email: true } },
-        agreement: { select: { id: true, title: true, kind: true, start_date: true, end_date: true, notice_days: true, auto_renewal: true } },
+        agreement: true,
         lines: { orderBy: [{ sort_order: "asc" }, { created_at: "asc" }], include: { project: { select: { id: true, name: true } } } },
         purchase_orders: { orderBy: [{ valid_to: "desc" }, { po_date: "desc" }] },
         tasks: { orderBy: [{ status: "asc" }, { due_date: "asc" }] },
@@ -26,8 +27,11 @@ export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { user, pa
     if (!contract) return NextResponse.json({ error: "Contract not found" }, { status: 404 });
 
     const today = new Date();
+    const ag = contract.agreement;
     return NextResponse.json({
       ...contract,
+      approval: approvalView(contract, contract.approval_status === "approved" ? contractLapse(contract, ag, contract.lines, today) : []),
+      agreement: ag ? { id: ag.id, title: ag.title, kind: ag.kind, start_date: ag.start_date, end_date: ag.end_date, notice_days: ag.notice_days, auto_renewal: ag.auto_renewal, approval: approvalView(ag, agreementLapse(ag, today)) } : null,
       status: contractStatus(contract.start_date, contract.end_date, today),
       days_left: daysLeft(contract.end_date, today),
       validation: validationChecks({ ...contract, lines_with_shape: contract.lines }),
@@ -37,6 +41,7 @@ export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { user, pa
         ...l,
         status: contractStatus(l.start_date, l.end_date, today),
         days_left: daysLeft(l.end_date, today),
+        approval: approvalView(l, l.approval_status === "approved" ? lineLapse(l, ag, today) : []),
       })),
     });
   } catch (error) {
@@ -110,6 +115,11 @@ export const PATCH = withRole(CONTRACT_API_ROLES, async (req: Request, { user, p
       data[`${team}_checked_at`] = body.done ? new Date() : null;
     }
 
+    // A change to the paper (dates, bill-to, documents, agreement, basis) makes the approval a new draft; sign-offs and pointers do not.
+    const substantive = Object.keys(data).some((k) => !/_checked_(by|at)$|^verified|^review_|^open_questions$|^spoc|^notes$|^stage$|^po_status$/.test(k));
+    if (substantive) Object.assign(data, editResets(user));
+    // The paper check referred to the dates, bill-to, basis and documents as they were.
+    if (["start_date", "end_date", "bill_to", "basis", "documents", "agreement_id", "counterparty"].some((k) => k in data) && before.paper_checked_at) Object.assign(data, { paper_checked_by: null, paper_checked_at: null });
     let contract = await prisma.contract.update({ where: { id }, data });
     // "Checked by a person" means all three teams have signed off.
     const allDone = !!(contract.paper_checked_at && contract.commercial_checked_at && contract.billing_checked_at);

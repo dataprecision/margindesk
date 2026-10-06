@@ -12,6 +12,9 @@ import ContractForm, { type ContractDocument, type ContractFormValues } from "@/
 import PurchaseOrders, { type PurchaseOrder } from "./purchase-orders";
 import ValidationChecklist from "./validation-checklist";
 import type { TeamCheck } from "@/lib/contracts/validation";
+import ApprovalControls, { ApprovalBadge } from "@/components/contracts/approval-controls";
+import { type ApprovalView } from "@/lib/contracts/approval";
+import AuditTrail from "./audit-trail";
 
 interface Line {
   id: string;
@@ -41,6 +44,8 @@ interface Line {
   confirmed_at: string | null;
   rule_evidence: TermShape["rule_evidence"];
   replaces_line_id: string | null;
+  approval: ApprovalView;
+  approval_note: string | null;
 }
 
 interface Task {
@@ -77,7 +82,8 @@ interface Contract {
   client_id: string | null;
   spoc_person: { id: string; name: string; email: string } | null;
   spoc_person_id: string | null;
-  agreement: { id: string; title: string; kind: string; start_date: string | null; end_date: string | null; notice_days: number | null; auto_renewal: boolean | null } | null;
+  agreement: { id: string; title: string; kind: string; start_date: string | null; end_date: string | null; notice_days: number | null; auto_renewal: boolean | null; approval: ApprovalView } | null;
+  approval: ApprovalView;
   agreement_id: string | null;
   documents: ContractDocument[] | null;
   validation: TeamCheck[];
@@ -136,7 +142,7 @@ export default function ContractDetailPage() {
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || "Save failed");
       await load();
-      return true;
+      return data ?? true;
     } catch (e: any) {
       setError(e.message);
       return false;
@@ -243,21 +249,12 @@ export default function ContractDetailPage() {
                 </span>
               );
             })()}
-            {contract.verified ? (
-              <span className="text-sm text-green-700">Checked by {contract.verified_by} on {formatDate(contract.verified_at)}</span>
-            ) : (
-              <span className="text-sm text-amber-700">Read from documents on {formatDate(contract.loaded_at)}. Not yet validated by all three teams.</span>
-            )}
+            <ApprovalBadge approval={contract.approval} size="sm" />
+            {contract.agreement && <span className="text-xs text-gray-600">{contract.agreement.kind}: <ApprovalBadge approval={contract.agreement.approval} /></span>}
+            {!contract.verified && <span className="text-sm text-amber-700">Read from documents on {formatDate(contract.loaded_at)}. Not yet checked by all three teams.</span>}
           </div>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => call(`/api/contracts/${id}`, "PATCH", { verified: !contract.verified })}
-            disabled={saving}
-            className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium bg-white hover:bg-gray-50 disabled:opacity-50"
-          >
-            {contract.verified ? "Mark as not checked" : "Mark as checked"}
-          </button>
           {!editingHeader && (
             <button onClick={startHeaderEdit} className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700">Edit details</button>
           )}
@@ -268,6 +265,25 @@ export default function ContractDetailPage() {
 
       {contract.direction !== "vendor" && contract.validation && (
         <ValidationChecklist contractId={id} clientId={contract.client?.id ?? contract.client_id} checks={contract.validation} documents={documents} saving={saving} call={call} role={session?.user?.role} />
+      )}
+
+      {contract.direction !== "vendor" && (
+        <section className={`rounded-lg border shadow-sm p-6 ${contract.approval.status === "approved" ? "border-green-200 bg-green-50" : contract.approval.status === "lapsed" || contract.approval.stored === "sent_back" ? "border-amber-200 bg-amber-50" : "border-gray-200 bg-white"}`}>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold text-gray-900">Contract approval</h2>
+              <p className="text-xs text-gray-500 mt-1">The final sign-off, by someone other than the person who last changed the contract (maker-checker). It needs the three team checks, an approved {contract.agreement ? contract.agreement.kind : "agreement"} and every live billing line approved. Any later change to the paper, the agreement or a line drops it back to draft.</p>
+            </div>
+            <div className="min-w-[16rem]">
+              <ApprovalControls kind="contract" endpoint={`/api/contracts/${id}/approval`} approval={contract.approval} role={session?.user?.role} me={session?.user?.email} saving={saving} call={call}
+                blockers={[
+                  ...(contract.validation ?? []).filter((t) => !t.done).map((t) => `${t.team === "paper" ? "contracting" : t.team === "commercial" ? "billing lines" : "Zoho and tax"} not checked`),
+                  ...(contract.agreement && contract.agreement.approval.status !== "approved" ? [`${contract.agreement.kind} is ${contract.agreement.approval.status === "lapsed" ? "lapsed" : contract.agreement.approval.status.replace("_", " ")}`] : []),
+                  ...((n) => (n ? [`${n} billing line${n > 1 ? "s" : ""} not approved`] : []))(contract.lines.filter((l) => l.rule_status !== "retired" && !contract.lines.some((x) => x.replaces_line_id === l.id) && l.approval.status !== "approved").length),
+                ]} />
+            </div>
+          </div>
+        </section>
       )}
 
       <section className="bg-white rounded-lg shadow p-6">
@@ -365,14 +381,14 @@ export default function ContractDetailPage() {
                     </div>
                     <div className="lg:col-span-4 min-w-0">
                       <div className="flex flex-wrap items-start gap-2">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${RULE_STATUS_STYLE[l.rule_status]}`}>{RULE_STATUS_LABEL[l.rule_status]}</span>
+                        {l.rule_status === "retired" && <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${RULE_STATUS_STYLE[l.rule_status]}`}>{RULE_STATUS_LABEL[l.rule_status]}</span>}
                         <div className="min-w-0 flex-1"><ShapeSummary term={l} /></div>
                       </div>
-                      {l.confirmed_by && l.rule_status === "confirmed" && <div className="text-xs text-gray-500 mt-1">by {l.confirmed_by} on {formatDate(l.confirmed_at)}</div>}
+                      <div className="mt-2">
+                        <ApprovalControls kind="line" endpoint={`/api/contracts/lines/${l.id}/approval`} approval={l.approval} role={session?.user?.role} me={session?.user?.email} saving={saving} call={call} compact />
+                      </div>
                       {!isLegal && (
-                        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-                          {l.shape && l.rule_status === "proposed" && <button disabled={saving} onClick={() => call(`/api/contracts/lines/${l.id}`, "PATCH", { rule_status: "confirmed" })} className="text-green-700 hover:underline">Confirm billing</button>}
-                          {l.rule_status === "confirmed" && <button disabled={saving} onClick={() => call(`/api/contracts/lines/${l.id}`, "PATCH", { rule_status: "proposed" })} className="text-gray-600 hover:underline">Unconfirm</button>}
+                        <div className="mt-1 text-xs">
                           {l.rule_status !== "retired" ? <button disabled={saving} onClick={() => call(`/api/contracts/lines/${l.id}`, "PATCH", { rule_status: "retired" })} className="text-gray-500 hover:underline">Retire</button> : <button disabled={saving} onClick={() => call(`/api/contracts/lines/${l.id}`, "PATCH", { rule_status: "proposed" })} className="text-blue-700 hover:underline">Restore</button>}
                         </div>
                       )}
@@ -490,6 +506,8 @@ export default function ContractDetailPage() {
       </div>
 
       <PurchaseOrders contractId={id} purchaseOrders={contract.purchase_orders} onChange={load} />
+
+      <AuditTrail contractId={id} />
 
       {docEdit && (
         <div className="fixed inset-0 z-50 !mt-0 flex items-start justify-center bg-gray-900/40 p-4 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) setDocEdit(null); }}>

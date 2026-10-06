@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { withRole } from "@/lib/auth/protect-route";
 import { CONTRACT_API_ROLES, audit, parseDate } from "@/lib/contracts/api";
 import { contractStatus } from "@/lib/contracts/status";
+import { agreementLapse, approvalView } from "@/lib/contracts/approval";
 
 /** GET /api/companies/[id]/agreements: the company's MSA / NDA / framework agreements with the contracts each governs. */
 export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { params }) => {
@@ -18,6 +19,7 @@ export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { params }
       agreements: agreements.map((a) => ({
         ...a,
         status: contractStatus(a.start_date, a.end_date, today),
+        approval: approvalView(a, agreementLapse(a, today)),
         contracts: a.contracts.map((c) => ({ ...c, beyond_agreement: !!(a.end_date && c.end_date && c.end_date > a.end_date) })),
       })),
     });

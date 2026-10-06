@@ -4,6 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { BUCKET_STYLE, STATUS_STYLE, formatDate, type ContractStatus, type ReviewBucket } from "@/lib/contracts/status";
+import { useSession } from "next-auth/react";
+import ApprovalControls from "@/components/contracts/approval-controls";
+import { approvalBlockers, type ApprovalView } from "@/lib/contracts/approval";
 
 interface PersonRef { id: string; name: string; email?: string }
 interface Contact {
@@ -12,7 +15,7 @@ interface Contact {
 }
 interface Agreement {
   id: string; kind: string; title: string; start_date: string | null; end_date: string | null; auto_renewal: boolean | null; renewal_note: string | null; notice_days: number | null; signed: boolean | null;
-  documents: { name: string; uri?: string | null; type?: string | null }[]; notes: string | null; paper_checked_by: string | null; paper_checked_at: string | null; status: ContractStatus;
+  documents: { name: string; uri?: string | null; type?: string | null }[]; notes: string | null; paper_checked_by: string | null; paper_checked_at: string | null; status: ContractStatus; approval: ApprovalView;
   contracts: { id: string; counterparty: string; basis: string; start_date: string | null; end_date: string | null; review_bucket: ReviewBucket | null; beyond_agreement: boolean }[];
 }
 
@@ -44,6 +47,7 @@ export default function CompanyPage() {
   const [newContact, setNewContact] = useState<typeof emptyContact | null>(null);
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
   const [agreements, setAgreements] = useState<Agreement[]>([]);
+  const { data: session } = useSession();
   const [agDraft, setAgDraft] = useState<{ id?: string; kind: string; title: string; start_date: string; end_date: string; auto_renewal: string; notice_days: string; signed: string; renewal_note: string; notes: string } | null>(null);
   const loadAgreements = useCallback(() => fetch(`/api/companies/${id}/agreements`).then((r) => r.json()).then((d) => setAgreements(d.agreements || [])).catch(() => {}), [id]);
   useEffect(() => { loadAgreements(); }, [loadAgreements]);
@@ -172,6 +176,7 @@ export default function CompanyPage() {
                   {a.documents?.length > 0 && <div className="text-xs text-gray-500 mt-1">{a.documents.map((d, i) => <span key={i}>{i > 0 ? "; " : ""}{d.uri && /^https?:/.test(d.uri) ? <a href={d.uri} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{d.name}</a> : d.name}</span>)}</div>}
                   {a.notes && <div className="text-xs text-gray-500 mt-1">{a.notes}</div>}
                   {a.paper_checked_by && <div className="text-xs text-green-700 mt-1">Paper checked by {a.paper_checked_by} on {formatDate(a.paper_checked_at)}</div>}
+                  <div className="mt-2"><ApprovalControls kind="agreement" endpoint={`/api/agreements/${a.id}/approval`} approval={a.approval} role={session?.user?.role} me={session?.user?.email} saving={saving} call={call} compact blockers={approvalBlockers("agreement", a)} /></div>
                 </div>
                 <div className="text-xs whitespace-nowrap">
                   <button onClick={() => setAgDraft({ id: a.id, kind: a.kind, title: a.title, start_date: a.start_date?.slice(0, 10) ?? "", end_date: a.end_date?.slice(0, 10) ?? "", auto_renewal: a.auto_renewal == null ? "" : String(a.auto_renewal), notice_days: a.notice_days == null ? "" : String(a.notice_days), signed: a.signed == null ? "" : String(a.signed), renewal_note: a.renewal_note ?? "", notes: a.notes ?? "" })} className="text-blue-700 hover:underline">Edit</button>
