@@ -330,7 +330,7 @@ export default function ContractDetailPage() {
         <div className="flex flex-wrap items-start justify-between gap-3 px-4 sm:px-6 py-4 border-b border-gray-200">
           <div className="min-w-0">
             <h2 className="text-lg font-semibold text-gray-900">Billing lines</h2>
-            <p className="text-xs text-gray-500 mt-1">{contract.lines.length - supersededIds.size} billing line{contract.lines.length - supersededIds.size === 1 ? "" : "s"} from {docsWithTerms || "no"} document{docsWithTerms === 1 ? "" : "s"}. A billing line is one chargeable thing in the contract. Each shows what the document says (contracting checks this) and how the amount is worked out each period (invoicing sets and confirms this). A change of price from a date is kept as a new dated version.</p>
+            <p className="text-xs text-gray-500 mt-1">{contract.lines.length - supersededIds.size} billing line{contract.lines.length - supersededIds.size === 1 ? "" : "s"} from {docsWithTerms || "no"} document{docsWithTerms === 1 ? "" : "s"}. A billing line is one chargeable thing in the contract. Each shows what the document says (contracting checks this) and how the amount is worked out each period (invoicing sets this). Each line is submitted by one person and approved by another; a change of price from a date is kept as a new dated version.</p>
           </div>
           <button onClick={() => setPanel({ mode: "add" })} className="px-3 py-1.5 border border-gray-300 rounded-md text-sm hover:bg-gray-50 whitespace-nowrap">Add billing line</button>
         </div>

@@ -65,7 +65,7 @@ export default function ValidationPage() {
     <div className="container mx-auto px-4 py-8">
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900">Validation</h1>
-        <p className="text-gray-600 mt-1"><Link href="/help/contract-validation" className="text-blue-700 hover:underline">How to validate a contract (guide)</Link>. Each customer contract is checked by three teams. Contracting attaches the SharePoint documents and confirms the paper; the lead confirms the billing rules; finance confirms the Zoho company, tax and PO. Estimates can only be raised for contracts all three have checked.</p>
+        <p className="text-gray-600 mt-1"><Link href="/help/contract-validation" className="text-blue-700 hover:underline">How to validate a contract (guide)</Link>. Each customer contract is checked by three teams. Contracting attaches the SharePoint documents and confirms the paper; invoicing confirms the billing lines and the Zoho company, tax and PO. After the three checks, each agreement, billing line and contract is approved by someone other than the person who last changed it. Estimates can only be raised for approved contracts.</p>
       </div>
       {error && <div className="mb-4 rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">{error}</div>}
 

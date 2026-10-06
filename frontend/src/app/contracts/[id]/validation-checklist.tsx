@@ -115,7 +115,7 @@ export default function ValidationChecklist({ contractId, clientId, checks, docu
                   <div className="text-xs text-gray-600">Checked on {formatDate(c.checked_at)}. <button disabled={saving} onClick={() => call(`/api/contracts/${contractId}`, "PATCH", { check: c.team, done: false })} className="text-blue-700 hover:underline">Undo</button></div>
                 ) : (
                   <button disabled={saving || blockers.length > 0} title={blockers.length ? blockers.join("; ") : undefined} onClick={() => call(`/api/contracts/${contractId}`, "PATCH", { check: c.team, done: true })} className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-medium disabled:opacity-40">
-                    Mark {c.team === "paper" ? "paper" : c.team === "commercial" ? "rules" : "Zoho and tax"} checked
+                    Mark {c.team === "paper" ? "paper" : c.team === "commercial" ? "billing lines" : "Zoho and tax"} checked
                   </button>
                 )}
               </div>
