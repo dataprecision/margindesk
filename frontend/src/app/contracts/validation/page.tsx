@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { TEAM_LABEL, type Team } from "@/lib/contracts/validation";
+import { ApprovalBadge } from "@/components/contracts/approval-controls";
+import type { ApprovalView } from "@/lib/contracts/approval";
 
 interface Row {
   id: string;
@@ -15,6 +17,9 @@ interface Row {
   confirmed_rule_count: number;
   verified: boolean;
   validation: { team: Team; done: boolean; missing: string[] }[];
+  approval: ApprovalView;
+  agreement_approval: string | null;
+  line_approval: { live: number; approved: number; awaiting: number; sent_back: number };
 }
 
 const TEAMS: Team[] = ["paper", "commercial", "billing"];
@@ -26,6 +31,7 @@ export default function ValidationPage() {
   const [team, setTeam] = useState<Team | "">("");
   const [onlyPending, setOnlyPending] = useState(true);
   const [search, setSearch] = useState("");
+  const [awaiting, setAwaiting] = useState(false);
 
   useEffect(() => {
     fetch("/api/contracts")
@@ -43,6 +49,7 @@ export default function ValidationPage() {
 
   const visible = rows.filter((r) => {
     if (search && !`${r.counterparty} ${r.client?.name ?? ""} ${r.spoc ?? ""}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (awaiting) return r.approval.stored === "submitted" || r.line_approval.awaiting > 0 || r.agreement_approval === "submitted";
     if (team) { const v = r.validation.find((x) => x.team === team)!; return onlyPending ? !v.done : true; }
     return onlyPending ? !r.verified : true;
   });
@@ -75,19 +82,20 @@ export default function ValidationPage() {
       <div className="flex flex-wrap gap-3 mb-4 items-center">
         <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search company or SPOC" className="px-3 py-2 border border-gray-300 rounded-md text-sm w-64 max-w-full" />
         <label className="text-sm text-gray-600 flex items-center gap-2"><input type="checkbox" checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)} />Only what is still pending{team ? ` for ${TEAM_LABEL[team]}` : ""}</label>
+        <label className="text-sm text-gray-600 flex items-center gap-2"><input type="checkbox" checked={awaiting} onChange={(e) => setAwaiting(e.target.checked)} />Awaiting approval ({rows.filter((r) => r.approval.stored === "submitted" || r.line_approval.awaiting > 0 || r.agreement_approval === "submitted").length})</label>
         <span className="ml-auto text-sm text-gray-500">{visible.length} of {rows.length}</span>
       </div>
 
       <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50">
-            <tr>{["Contract", "SPOC", ...TEAMS.map((t) => TEAM_LABEL[t])].map((h) => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>)}</tr>
+            <tr>{["Contract", "SPOC", ...TEAMS.map((t) => TEAM_LABEL[t]), "Approval"].map((h) => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>)}</tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {loading ? (
-              <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-500">Loading…</td></tr>
+              <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-500">Loading…</td></tr>
             ) : visible.length === 0 ? (
-              <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-500">Nothing pending.</td></tr>
+              <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-500">Nothing pending.</td></tr>
             ) : visible.map((r) => (
               <tr key={r.id} className="hover:bg-gray-50 align-top">
                 <td className="px-4 py-3">
@@ -96,6 +104,10 @@ export default function ValidationPage() {
                 </td>
                 <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{r.spoc || "—"}</td>
                 {TEAMS.map((t) => <td key={t} className="px-4 py-3">{cell(r, t)}</td>)}
+                <td className="px-4 py-3">
+                  <ApprovalBadge approval={r.approval} />
+                  <div className="text-xs text-gray-600 mt-1">Lines {r.line_approval.approved}/{r.line_approval.live} approved{r.line_approval.awaiting ? `, ${r.line_approval.awaiting} awaiting` : ""}{r.line_approval.sent_back ? `, ${r.line_approval.sent_back} sent back` : ""}</div>
+                </td>
               </tr>
             ))}
           </tbody>

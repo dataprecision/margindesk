@@ -10,7 +10,7 @@ import SharePointPicker from "@/components/contracts/sharepoint-picker";
 // way for contracting to attach the SharePoint links the paper check needs.
 
 const inputClass = "w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500";
-const WHO: Record<Team, string> = { paper: "Attach the signed agreement and the current PO from SharePoint, then confirm the basis, dates and invoiced-to entity match them.", commercial: "Invoicing: confirm how each billing line below is billed (Confirm billing on each line), against the wording and past invoices, and make sure the SPOC is a person from People.", billing: "Invoicing: confirm the company is linked to its Zoho Books record, with GSTIN, currency, payment terms, and a valid PO where the customer uses them." };
+const WHO: Record<Team, string> = { paper: "Attach the signed agreement and the current PO from SharePoint, then confirm the basis, dates and invoiced-to entity match them.", commercial: "Invoicing: each billing line below must be approved (submitted by one person, approved by another) against the wording and past invoices; and the SPOC must be a person from People.", billing: "Invoicing: confirm the company is linked to its Zoho Books record, with GSTIN, currency, payment terms, and a valid PO where the customer uses them." };
 
 export default function ValidationChecklist({ contractId, clientId, checks, documents, saving, call, role }: {
   contractId: string;

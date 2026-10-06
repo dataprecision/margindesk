@@ -104,3 +104,21 @@ export async function grantAppRead(userToken: string, driveId: string, itemId: s
   const text = (await res.text()).slice(0, 300);
   return { ok: false, error: `HTTP ${res.status}: ${text}` };
 }
+
+/**
+ * The current version of each linked document, for freezing at approval:
+ * SharePoint's last-modified time and eTag. Best effort: a link MarginDesk
+ * cannot read, or any Graph error, leaves that document without a version.
+ */
+export async function documentVersions(webUrls: string[]): Promise<Record<string, { modified?: string | null; etag?: string | null; version_checked_at: string }>> {
+  const out: Record<string, { modified?: string | null; etag?: string | null; version_checked_at: string }> = {};
+  const now = new Date().toISOString();
+  await Promise.all(Array.from(new Set(webUrls)).map(async (u) => {
+    try {
+      const encoded = "u!" + Buffer.from(u).toString("base64").replace(/=+$/, "").replace(/\//g, "_").replace(/\+/g, "-");
+      const it = await Promise.race([graph(`shares/${encoded}/driveItem?$select=id,lastModifiedDateTime,eTag`), new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), 6000))]);
+      out[u] = { modified: it.lastModifiedDateTime ?? null, etag: it.eTag ?? null, version_checked_at: now };
+    } catch { out[u] = { version_checked_at: now }; }
+  }));
+  return out;
+}

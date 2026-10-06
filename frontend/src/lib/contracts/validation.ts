@@ -29,7 +29,7 @@ const isWebLink = (d: any) => typeof d?.uri === "string" && /^https?:\/\//i.test
 export function validationChecks(c: ValidationInput): TeamCheck[] {
   const docs = Array.isArray(c.documents) ? (c.documents as any[]) : [];
   const linked = docs.filter(isWebLink);
-  // Invoicing confirms the billing shape on every term that has one.
+  // "Confirmed" is the result of maker-checker approval on the line (submitted by one person, approved by another).
   const live = c.lines_with_shape.filter((r) => r.shape && r.rule_status !== "retired");
   const confirmed = live.filter((r) => r.rule_status === "confirmed");
   const unshaped = c.lines_with_shape.filter((r) => !r.shape && r.rule_status !== "retired").length;
@@ -45,7 +45,7 @@ export function validationChecks(c: ValidationInput): TeamCheck[] {
     { text: c.bill_to ? `Invoiced to: ${c.bill_to}` : "Invoiced-to entity missing", ok: !!c.bill_to },
   ];
   const commercial = [
-    { text: live.length ? `${confirmed.length} of ${live.length} billing lines confirmed` : "No billing line with a shape on this contract", ok: live.length > 0 && confirmed.length === live.length },
+    { text: live.length ? `${confirmed.length} of ${live.length} billing lines approved` : "No billing line with a shape on this contract", ok: live.length > 0 && confirmed.length === live.length },
     { text: unshaped ? `${unshaped} billing line${unshaped > 1 ? "s" : ""} still without a shape` : "Every billing line has a shape", ok: unshaped === 0 },
     { text: c.spoc_person_id ? "SPOC set from People" : "SPOC not linked to a person", ok: !!c.spoc_person_id },
   ];

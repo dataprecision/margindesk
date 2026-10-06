@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PERIODS, missingParams } from "@/lib/billing/shapes";
+import { PERIODS } from "@/lib/billing/shapes";
 import { prisma } from "@/lib/prisma";
 import { withRole } from "@/lib/auth/protect-route";
 import { CONTRACT_API_ROLES, audit, parseAmount, parseDate } from "@/lib/contracts/api";
+import { editResets } from "@/lib/contracts/approval";
 
 const TEXT_FIELDS = ["service", "billing_type", "unit", "currency", "read_from", "source_document", "extra_rule", "date_note", "quote"] as const;
 
@@ -35,21 +36,23 @@ export const PATCH = withRole(CONTRACT_API_ROLES, async (req: Request, { user, p
     if ("fx_rate" in body) data.fx_rate = body.fx_rate === "" || body.fx_rate == null ? null : Number(body.fx_rate);
     if ("input_needed" in body) data.input_needed = body.input_needed || null;
     if ("advance_or_arrears" in body) data.advance_or_arrears = body.advance_or_arrears || null;
+    // "Confirmed" is now the result of maker-checker approval (POST …/approval); only retire / restore is set here.
     if ("rule_status" in body) {
-      if (!["proposed", "confirmed", "retired"].includes(body.rule_status)) return NextResponse.json({ error: "Unknown status" }, { status: 400 });
-      if (body.rule_status === "confirmed") {
-        const shape = (data.shape ?? before.shape) as string | null;
-        const params = (data.params ?? before.params ?? {}) as Record<string, any>;
-        if (!shape) return NextResponse.json({ error: "Set how the term is billed before confirming it" }, { status: 400 });
-        const gaps = missingParams(shape, params);
-        if (gaps.length) return NextResponse.json({ error: `Still needed: ${gaps.join(", ")}` }, { status: 400 });
-      }
+      if (!["proposed", "retired"].includes(body.rule_status)) return NextResponse.json({ error: "Use Submit / Approve for confirmation" }, { status: 400 });
       data.rule_status = body.rule_status;
-      data.confirmed_by = body.rule_status === "confirmed" ? user.name || user.email : null;
-      data.confirmed_at = body.rule_status === "confirmed" ? new Date() : null;
+      data.confirmed_by = null; data.confirmed_at = null;
     }
+    if ("approval_note" in body) data.approval_note = body.approval_note || null;
+    if (Object.keys(data).length === 0) return NextResponse.json({ line: before });
 
+    // Any change makes it a new draft by this person, and the contract above it is no longer approved as a whole.
+    Object.assign(data, editResets(user), "approval_note" in body ? { approval_note: body.approval_note || null } : {});
+    // An approved line was "confirmed" for billing; once edited it is a proposal again until re-approved.
+    if (before.rule_status === "confirmed" && !("rule_status" in data)) Object.assign(data, { rule_status: "proposed", confirmed_by: null, confirmed_at: null });
     const line = await prisma.contractLine.update({ where: { id: lineId }, data });
+    // The "billing lines checked" sign-off and the contract approval both referred to the line as it was.
+    await prisma.contract.update({ where: { id: before.contract_id }, data: { commercial_checked_by: null, commercial_checked_at: null } });
+    await prisma.contract.updateMany({ where: { id: before.contract_id, approval_status: { in: ["approved", "submitted"] } }, data: editResets(user) });
     await audit(user, "ContractLine", lineId, "update", before, line);
     return NextResponse.json({ line });
   } catch (error: any) {
@@ -67,6 +70,8 @@ export const DELETE = withRole(CONTRACT_API_ROLES, async (_req: Request, { user,
     const before = await prisma.contractLine.findUnique({ where: { id: lineId } });
     if (!before) return NextResponse.json({ error: "Billing line not found" }, { status: 404 });
     await prisma.contractLine.delete({ where: { id: lineId } });
+    await prisma.contract.update({ where: { id: before.contract_id }, data: { commercial_checked_by: null, commercial_checked_at: null } });
+    await prisma.contract.updateMany({ where: { id: before.contract_id, approval_status: { in: ["approved", "submitted"] } }, data: editResets(user) });
     await audit(user, "ContractLine", lineId, "delete", before, undefined);
     return NextResponse.json({ success: true });
   } catch (error) {

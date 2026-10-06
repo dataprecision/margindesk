@@ -36,7 +36,7 @@ export default function LinePanel({ mode, line, presetDocument, contractId, clie
   documents: PanelDoc[];
   role?: string;
   saving: boolean;
-  call: (url: string, method: string, body?: unknown) => Promise<boolean>;
+  call: (url: string, method: string, body?: unknown) => Promise<any>;
   onAttach: (files: { name: string; uri: string }[]) => Promise<boolean>;
   onClose: () => void;
 }) {
@@ -49,6 +49,7 @@ export default function LinePanel({ mode, line, presetDocument, contractId, clie
     source_document: docName, quote: line?.quote ?? "", read_from: line?.read_from ?? (/po|purchase/i.test(documents.find((d) => d.name === docName)?.type ?? "") ? "Purchase order" : "Contract"),
   });
   const [b, setB] = useState({ shape: line?.shape ?? "", params: (line?.params ?? {}) as Record<string, any>, period: line?.period ?? "monthly", advance_or_arrears: line?.advance_or_arrears ?? "", input_needed: line?.input_needed ?? "", fx_rate: line?.fx_rate ?? "" });
+  const [note, setNote] = useState((line as any)?.approval_note ?? "");
   const [effective, setEffective] = useState("");
   const [picking, setPicking] = useState(false);
   const [problem, setProblem] = useState("");
@@ -63,15 +64,19 @@ export default function LinePanel({ mode, line, presetDocument, contractId, clie
     const body: Record<string, unknown> = {
       ...(canWording ? w : {}),
       ...(canBilling ? { shape: b.shape || null, params: b.params, period: b.period, advance_or_arrears: b.advance_or_arrears, input_needed: b.input_needed, fx_rate: b.fx_rate } : {}),
-      ...(confirm ? { rule_status: "confirmed" } : {}),
+      approval_note: note,
     };
-    let ok: boolean;
+    let ok: any;
     if (mode === "add") ok = await call(`/api/contracts/${contractId}/lines`, "POST", body);
     else if (mode === "edit") ok = await call(`/api/contracts/lines/${line!.id}`, "PATCH", body);
     else {
       delete body.start_date;
       ok = await call(`/api/contracts/lines/${line!.id}/revise`, "POST", { ...body, effective_from: effective });
-      if (ok && confirm) { /* the new version starts as "to confirm"; confirming is one click on the row */ }
+    }
+    // Saving makes it a draft by this person; submitting hands it to someone else to approve.
+    if (ok && confirm) {
+      const newId = ok?.line?.id ?? line?.id;
+      if (newId) ok = await call(`/api/contracts/lines/${newId}/approval`, "POST", { action: "submit" });
     }
     if (ok) onClose();
   };
@@ -189,10 +194,14 @@ export default function LinePanel({ mode, line, presetDocument, contractId, clie
           )}
         </section>
 
+        <section className="border-t border-gray-200 pt-4">
+          <label className="block"><span className="text-xs text-gray-600">Evidence note{!/^(contract|purchase order)$/i.test(w.read_from) ? " (required: this line is not read from a signed contract or PO; say who agreed it and link the email)" : " (optional: anything the approver should know)"}</span>
+            <textarea rows={2} className={inputClass} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Rate agreed by the client's CFO by email on 12 Mar 2026: https://outlook.office.com/…" /></label>
+        </section>
         {problem && <div className="rounded-md bg-red-50 border border-red-200 p-2 text-sm text-red-700">{problem}</div>}
         <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
           <button disabled={saving} onClick={() => submit(false)} className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{mode === "add" ? "Add billing line" : mode === "edit" ? "Save" : "Record the change"}</button>
-          {canBilling && mode !== "revise" && <button disabled={saving || !shape || gaps.length > 0} title={!shape ? "Set the shape first" : gaps.length ? `Still needed: ${gaps.join(", ")}` : undefined} onClick={() => submit(true)} className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-40">Save and confirm billing</button>}
+          <button disabled={saving} onClick={() => submit(true)} className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-40" title="Saves, then submits it for someone else to approve (maker-checker)">Save and submit for approval</button>
           <button type="button" onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-md text-sm">Cancel</button>
         </div>
       </div>

@@ -24,7 +24,7 @@ export default function ContractValidationGuide() {
       <nav className="mt-6 rounded-lg border border-gray-200 bg-white p-4 text-sm">
         <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">On this page</div>
         <ul className="grid grid-cols-1 md:grid-cols-2 gap-1">
-          {[["what", "What validation means"], ["need", "What you need before you start"], ["validate", "Validating an existing contract"], ["new", "Adding a new contract"], ["po", "Purchase orders"], ["cases", "Special cases"], ["after", "What happens after sign-off"], ["checklist", "Quick checklist and questions"]].map(([id, label]) => (
+          {[["what", "What validation means"], ["need", "What you need before you start"], ["validate", "Validating an existing contract"], ["new", "Adding a new contract"], ["po", "Purchase orders"], ["approval", "Approval (maker-checker)"], ["cases", "Special cases"], ["after", "What happens after sign-off"], ["checklist", "Quick checklist and questions"]].map(([id, label]) => (
             <li key={id}><a href={`#${id}`} className="text-blue-700 hover:underline">{label}</a></li>
           ))}
         </ul>
@@ -131,6 +131,17 @@ export default function ContractValidationGuide() {
       <P>The document wins. Correct the entry, and if the difference affects billing, add an open question so the lead sees it when confirming the rules.</P>
       <H3>Who do I ask?</H3>
       <P>The contract's SPOC owns the relationship; the company page shows the business, legal and finance owners on our side.</P>
+
+      <H id="approval">Approval (maker-checker)</H>
+      <P>Checks say a team has looked. Approval is the formal sign-off accounts can rely on, and it follows the maker-checker rule: the person who last changed a record cannot be the one who approves it.</P>
+      <Bullets items={[
+        <><Field>What gets approved</Field>: each MSA or NDA (on the company page), each billing line, and finally the contract as a whole.</>,
+        <><Field>The steps</Field>: whoever enters or corrects a record is its maker. They click <Field>Submit for approval</Field>. A different person with the right role clicks <Field>Approve</Field> or <Field>Send back</Field> with a reason. Agreements are approved by contracting or the owner; billing lines by invoicing, finance or the owner; the contract by finance or the owner.</>,
+        <><Field>What approval needs</Field>: an agreement needs its dates and a signed document linked from SharePoint. A billing line needs its shape and numbers, the clause as written with its page or clause number, the source document and a start date; a line not read from a signed contract or PO also needs an evidence note saying who agreed it, with the email link. The contract needs all three team checks, an approved agreement and every live billing line approved.</>,
+        <><Field>Any edit resets it</Field>. Changing an approved agreement, line or contract header drops it back to draft, so an approval always refers to the record as it is now. Changing an agreement also resets the contracts under it; changing or adding a line resets the contract.</>,
+        <><Field>Lapsed</Field>: an approval that no longer holds (the agreement ended, the line runs beyond the agreement, a team check was undone) shows as lapsed and blocks estimates until it is resubmitted.</>,
+        <><Field>What is kept</Field>: who approved, when, any note, and a frozen copy of what was approved, including the SharePoint document's last-modified time, so a replaced file is visible later. The <Field>Audit trail</Field> at the bottom of each contract lists every change, check and approval, and can be downloaded as CSV.</>,
+      ]} />
     </div>
   );
 }

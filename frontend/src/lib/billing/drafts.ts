@@ -89,7 +89,8 @@ export async function prepareDrafts(period: Date, db: Db = defaultPrisma, prepar
       const lines = cur.map((r, i) => {
         const inputs = keptInputs.get(r.id) ?? (r.shape === "fixed" ? {} : {});
         const res = computeLine(r.shape, r.params as Record<string, any>, inputs);
-        return { line_id: r.id, service: r.service, description: null, shape: r.shape, params: r.params as Prisma.InputJsonValue, inputs: inputs as Prisma.InputJsonValue, quantity: res.quantity, rate: res.rate, amount: res.amount, explanation: res.explanation, missing: res.missing, sort_order: i };
+        const source = { line_id: r.id, approval_status: (r as any).approval_status ?? null, approved_by: (r as any).approved_by ?? null, approved_at: (r as any).approved_at ?? null, source_document: (r as any).source_document ?? null, quote: (r as any).quote ?? null, amount_text: (r as any).amount_text ?? null, start_date: r.start_date ?? null, end_date: r.end_date ?? null };
+        return { line_id: r.id, source: JSON.parse(JSON.stringify(source)) as Prisma.InputJsonValue, service: r.service, description: null, shape: r.shape, params: r.params as Prisma.InputJsonValue, inputs: inputs as Prisma.InputJsonValue, quantity: res.quantity, rate: res.rate, amount: res.amount, explanation: res.explanation, missing: res.missing, sort_order: i };
       });
       // The PO: keep a chosen one, else the valid PO in this currency with the most left.
       const validPos = c.purchase_orders.filter((p) => (p.currency || "INR") === currency && p.value != null && (!p.valid_to || p.valid_to >= period) && (!p.valid_from || p.valid_from <= periodEnd(period)));

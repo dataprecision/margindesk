@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withRole } from "@/lib/auth/protect-route";
 import { CONTRACT_API_ROLES, audit, parseAmount, parseDate } from "@/lib/contracts/api";
+import { editResets } from "@/lib/contracts/approval";
 
 /**
  * POST /api/contracts/lines/[lineId]/revise  { effective_from, ...changed fields }
@@ -44,8 +45,11 @@ export const POST = withRole(CONTRACT_API_ROLES, async (req: Request, { user, pa
           input_needed: legal ? old.input_needed : pick("input_needed", old.input_needed) || null,
           advance_or_arrears: legal ? old.advance_or_arrears : pick("advance_or_arrears", old.advance_or_arrears) || null,
           rule_status: "proposed", rule_evidence: old.rule_evidence ?? undefined,
+          approval_note: old.approval_note, last_edited_by: editResets(user).last_edited_by, last_edited_at: new Date(),
         },
       }),
+      prisma.contract.update({ where: { id: old.contract_id }, data: { commercial_checked_by: null, commercial_checked_at: null } }),
+      prisma.contract.updateMany({ where: { id: old.contract_id, approval_status: { in: ["approved", "submitted"] } }, data: editResets(user) }),
     ]);
     await audit(user, "ContractLine", created.id, "revise", old, created);
     return NextResponse.json({ line: created }, { status: 201 });

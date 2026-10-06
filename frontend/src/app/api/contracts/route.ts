@@ -4,6 +4,7 @@ import { withRole } from "@/lib/auth/protect-route";
 import { CONTRACT_API_ROLES, audit, parseDate } from "@/lib/contracts/api";
 import { contractStatus, daysLeft } from "@/lib/contracts/status";
 import { validationChecks } from "@/lib/contracts/validation";
+import { agreementLapse, approvalView, contractLapse } from "@/lib/contracts/approval";
 
 /**
  * GET /api/contracts
@@ -15,8 +16,8 @@ export const GET = withRole(CONTRACT_API_ROLES, async () => {
       include: {
         client: { select: { id: true, name: true, placeholder: true, zoho_contact_id: true, gstin: true, billing_currency: true, payment_terms: true } },
         spoc_person: { select: { id: true, name: true } },
-        lines: { select: { end_date: true, start_date: true, shape: true, rule_status: true } },
-        agreement: { select: { id: true, title: true, kind: true, end_date: true, start_date: true } },
+        lines: { select: { end_date: true, start_date: true, shape: true, rule_status: true, approval_status: true, last_edited_by: true, last_edited_at: true, submitted_by: true, submitted_at: true, approved_by: true, approved_at: true, approval_note: true } },
+        agreement: true,
         purchase_orders: { select: { valid_to: true, status: true, value: true } },
         tasks: { where: { status: "open" }, select: { id: true, due_date: true } },
         billing_rules: { where: { status: { not: "retired" } }, select: { status: true } },
@@ -40,6 +41,9 @@ export const GET = withRole(CONTRACT_API_ROLES, async () => {
           line_count: lines.length,
           next_line_end: upcoming[0] ?? null,
           po_count: purchase_orders.length,
+          approval: approvalView(c, c.approval_status === "approved" ? contractLapse(c, c.agreement, lines, today) : []),
+          agreement_approval: c.agreement ? approvalView(c.agreement, agreementLapse(c.agreement, today)).status : null,
+          line_approval: { live: lines.filter((l) => l.rule_status !== "retired").length, approved: lines.filter((l) => l.rule_status !== "retired" && l.approval_status === "approved").length, awaiting: lines.filter((l) => l.rule_status !== "retired" && l.approval_status === "submitted").length, sent_back: lines.filter((l) => l.rule_status !== "retired" && l.approval_status === "sent_back").length },
           rule_count: lines.filter((l) => l.shape && l.rule_status !== "retired").length,
           confirmed_rule_count: lines.filter((l) => l.shape && l.rule_status === "confirmed").length,
           beyond_agreement: !!(c.agreement?.end_date && c.end_date && c.end_date > c.agreement.end_date) || !!(c.agreement?.end_date && c.agreement.end_date < today && (!c.end_date || c.end_date >= today)),
