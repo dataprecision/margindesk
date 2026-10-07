@@ -31,7 +31,7 @@ export const GET = withRole(CONTRACT_API_ROLES, async (_req: Request, { user, pa
     return NextResponse.json({
       ...contract,
       approval: approvalView(contract, contract.approval_status === "approved" ? contractLapse(contract, ag, contract.lines, today) : []),
-      agreement: ag ? { id: ag.id, title: ag.title, kind: ag.kind, start_date: ag.start_date, end_date: ag.end_date, notice_days: ag.notice_days, auto_renewal: ag.auto_renewal, approval: approvalView(ag, agreementLapse(ag, today)) } : null,
+      agreement: ag ? { id: ag.id, title: ag.title, kind: ag.kind, start_date: ag.start_date, end_date: ag.end_date, notice_days: ag.notice_days, auto_renewal: ag.auto_renewal, signed: ag.signed, documents: ag.documents, approval: approvalView(ag, agreementLapse(ag, today)) } : null,
       status: contractStatus(contract.start_date, contract.end_date, today),
       days_left: daysLeft(contract.end_date, today),
       validation: validationChecks({ ...contract, lines_with_shape: contract.lines }),

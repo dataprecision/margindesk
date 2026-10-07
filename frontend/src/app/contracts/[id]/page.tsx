@@ -13,7 +13,7 @@ import PurchaseOrders, { type PurchaseOrder } from "./purchase-orders";
 import ValidationChecklist from "./validation-checklist";
 import type { TeamCheck } from "@/lib/contracts/validation";
 import ApprovalControls, { ApprovalBadge } from "@/components/contracts/approval-controls";
-import { type ApprovalView } from "@/lib/contracts/approval";
+import { approvalBlockers, type ApprovalView } from "@/lib/contracts/approval";
 import AuditTrail from "./audit-trail";
 
 interface Line {
@@ -82,7 +82,7 @@ interface Contract {
   client_id: string | null;
   spoc_person: { id: string; name: string; email: string } | null;
   spoc_person_id: string | null;
-  agreement: { id: string; title: string; kind: string; start_date: string | null; end_date: string | null; notice_days: number | null; auto_renewal: boolean | null; approval: ApprovalView } | null;
+  agreement: { id: string; title: string; kind: string; start_date: string | null; end_date: string | null; notice_days: number | null; auto_renewal: boolean | null; signed: boolean | null; documents: { name: string; uri?: string | null }[]; approval: ApprovalView } | null;
   approval: ApprovalView;
   agreement_id: string | null;
   documents: ContractDocument[] | null;
@@ -269,10 +269,25 @@ export default function ContractDetailPage() {
 
       {contract.direction !== "vendor" && (
         <section className={`rounded-lg border shadow-sm p-6 ${contract.approval.status === "approved" ? "border-green-200 bg-green-50" : contract.approval.status === "lapsed" || contract.approval.stored === "sent_back" ? "border-amber-200 bg-amber-50" : "border-gray-200 bg-white"}`}>
+          {contract.agreement && (
+            <div className="mb-5 pb-5 border-b border-gray-200 flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-gray-900">{contract.agreement.kind} approval</h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  <Link href={`/companies/${contract.client?.id ?? contract.client_id}`} className="text-blue-700 hover:underline">{contract.agreement.title}</Link>
+                  {" · "}{formatDate(contract.agreement.start_date)} → {formatDate(contract.agreement.end_date)}. Contracting submits it once its dates and the signed document are on the company page; a different contracting person or the owner approves.
+                </p>
+              </div>
+              <div className="min-w-[16rem]">
+                <ApprovalControls kind="agreement" endpoint={`/api/agreements/${contract.agreement.id}/approval`} approval={contract.agreement.approval} role={session?.user?.role} me={session?.user?.email} saving={saving} call={call} compact blockers={approvalBlockers("agreement", contract.agreement)} />
+              </div>
+            </div>
+          )}
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
               <h2 className="text-lg font-semibold text-gray-900">Contract approval</h2>
               <p className="text-xs text-gray-500 mt-1">The final sign-off, by someone other than the person who last changed the contract (maker-checker). It needs the three team checks, an approved {contract.agreement ? contract.agreement.kind : "agreement"} and every live billing line approved. Any later change to the paper, the agreement or a line drops it back to draft.</p>
+              {isLegal && <p className="text-xs text-gray-700 mt-2">Your part: mark the paper checked above, submit the {contract.agreement ? contract.agreement.kind : "agreement"}, and submit each billing line below once its wording and clause are right. Invoicing approves the lines; the contract itself is then submitted and approved by finance or the owner.</p>}
             </div>
             <div className="min-w-[16rem]">
               <ApprovalControls kind="contract" endpoint={`/api/contracts/${id}/approval`} approval={contract.approval} role={session?.user?.role} me={session?.user?.email} saving={saving} call={call}
